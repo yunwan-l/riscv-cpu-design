@@ -1,0 +1,160 @@
+# RVP (RISC-V Pipeline) Named Configurations
+#
+# Each configuration must specify the same set of parameters.
+# Reference: ibex_configs.yaml (lowRISC Ibex)
+#
+# These parameters map to compile-time defines in config/rvp_config.svh:
+#
+#   RV32E               -> `RVP_RV32E               (0 = RV32I, 1 = RV32E)
+#   RV32M               -> `RVP_RV32M               (0 = disable, 1 = enable M ext)
+#   RV32C               -> `RVP_RV32C               (0 = disable, 1 = enable C ext)
+#   ICacheEnable        -> `RVP_ICACHE_ENABLE       (0/1)
+#   DCacheEnable        -> `RVP_DCACHE_ENABLE       (0/1)
+#   ICacheReplacePolicy -> `RVP_ICACHE_REPLACE_POLICY (0=RR,1=LRU,2=PLRU,3=FIFO,4=Random,5=SRRIP)
+#   DCacheReplacePolicy -> `RVP_DCACHE_REPLACE_POLICY (same encoding)
+#   Forwarding          -> `RVP_FORWARDING          (0 = stall-only, 1 = forwarding)
+#   BranchPredict       -> `RVP_BRANCH_PREDICT      (0=none,1=predict-not-taken,2=2-bit counter)
+#   CacheStatsEnable    -> `RVP_CACHE_STATS_ENABLE  (0/1)
+#
+# Usage with Makefile:
+#   make sim CONFIG=phase3_icache_lru
+#   make synth CONFIG=phase3_full BOARD=nexys4
+
+# ============================================================================
+# Phase 1: Basic Configuration
+# ============================================================================
+
+# Minimal RV32I without M extension, no cache, no forwarding.
+# Used for initial bring-up of the 5-stage pipeline.
+phase1_basic:
+  RV32E                    : 0
+  RV32M                    : 0
+  RV32C                    : 0
+  ICacheEnable             : 0
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 0
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 0
+
+# ============================================================================
+# Phase 2: Complete RV32I
+# ============================================================================
+
+# Full RV32I with M extension (MUL/DIV/REM), no cache, no forwarding.
+# Validates the complete base integer ISA before cache optimization.
+phase2_full_rv32i:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 0
+  ICacheEnable             : 0
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 0
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 0
+
+# ============================================================================
+# Phase 3: I-Cache with various replacement policies
+# All Phase 3 I-Cache configs enable M extension and cache statistics
+# so hit-rate / miss-rate can be compared across policies.
+# ============================================================================
+
+# I-Cache enabled, Round-Robin replacement (baseline, simplest logic).
+phase3_icache_rr:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 0
+  ICacheEnable             : 1
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 0      # Round-Robin
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 1
+
+# I-Cache enabled, True LRU replacement (best hit rate, most logic).
+phase3_icache_lru:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 0
+  ICacheEnable             : 1
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 1      # LRU
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 1
+
+# I-Cache enabled, Pseudo-LRU (Tree-PLRU) replacement (good trade-off).
+phase3_icache_plru:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 0
+  ICacheEnable             : 1
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 2      # Pseudo-LRU
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 1
+
+# I-Cache enabled, FIFO replacement (simple, fair).
+phase3_icache_fifo:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 0
+  ICacheEnable             : 1
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 3      # FIFO
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 1
+
+# I-Cache enabled, Random replacement (LFSR-based, zero overhead).
+phase3_icache_random:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 0
+  ICacheEnable             : 1
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 4      # Random
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 1
+
+# I-Cache enabled, SRRIP (Static Re-Reference Interval Prediction) replacement.
+# Re-reference interval based policy for comparison study.
+phase3_icache_srrip:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 0
+  ICacheEnable             : 1
+  DCacheEnable             : 0
+  ICacheReplacePolicy      : 5      # SRRIP
+  DCacheReplacePolicy      : 0
+  Forwarding               : 0
+  BranchPredict            : 0
+  CacheStatsEnable         : 1
+
+# ============================================================================
+# Phase 3: Full-featured configuration (max performance)
+# ============================================================================
+
+# Full configuration: I-Cache + D-Cache + Forwarding + M extension +
+# C extension + branch prediction. Uses LRU for both caches.
+phase3_full:
+  RV32E                    : 0
+  RV32M                    : 1
+  RV32C                    : 1
+  ICacheEnable             : 1
+  DCacheEnable             : 1
+  ICacheReplacePolicy      : 1      # LRU
+  DCacheReplacePolicy      : 1      # LRU
+  Forwarding               : 1
+  BranchPredict            : 2      # 2-bit saturating counter
+  CacheStatsEnable         : 1
