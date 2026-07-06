@@ -2,7 +2,7 @@
 # Makefile - RVP (RISC-V Pipeline) Processor Build System
 # =============================================================================
 # Targets:
-#   make sim      - Run simulation (iverilog or verilator)
+#   make sim      - Run simulation (modelsim | iverilog | verilator)
 #   make synth    - Run Vivado synthesis
 #   make test     - Run test suite
 #   make configs  - List all available named configurations
@@ -11,9 +11,10 @@
 # Usage examples:
 #   make sim                                  # Default config (phase2_full_rv32i)
 #   make sim CONFIG=phase3_icache_lru          # Use specific config
-#   make sim SIMULATOR=verilator               # Use Verilator instead of iverilog
+#   make sim SIMULATOR=modelsim                 # Use ModelSim (default)
+#   make sim FIRMWARE=tb/tests/build/add.hex   # Run with specific test firmware
 #   make synth CONFIG=phase3_full BOARD=nexys4 # Synthesize with full config
-#   make test                                  - Run all tests
+#   make test                                  # Run all tests
 #   make configs                               # List available configs
 # =============================================================================
 
@@ -27,10 +28,12 @@ BUILD_DIR    := $(PROJECT_ROOT)/build
 
 # --- Configuration selection ---
 CONFIG       ?= phase2_full_rv32i
-SIMULATOR    ?= iverilog
+SIMULATOR    ?= modelsim
 BOARD        ?= nexys4
-TOP_MODULE   ?= rvp_core
-TB_MODULE    ?= tb_rvp_core
+TOP_MODULE   ?= rvp_core       # Synthesis top-level
+TB_MODULE    ?= rvp_tb         # Testbench file (without .sv extension)
+SIM_TOP      ?= rvp_tb         # Top-level module for simulation
+FIRMWARE     ?=                # Firmware hex file for simulation
 
 # --- File lists ---
 FILELIST     := $(CONFIG_DIR)/rvp_core.f
@@ -45,25 +48,32 @@ RISCV_OBJCOPY := $(RISCV_PREFIX)objcopy
 # --- Vivado ---
 VIVADO       ?= vivado
 
+# --- ModelSim ---
+MODELSIM_DIR ?= /c/modeltech64_10.7/win64
+VLIB         := $(MODELSIM_DIR)/vlib
+VLOG         := $(MODELSIM_DIR)/vlog
+VSIM         := $(MODELSIM_DIR)/vsim
+
 # --- Simulation parameters ---
 SIM_TIME     ?= 1000ns
 VCD_FILE     ?= $(BUILD_DIR)/sim/wave.vcd
 SIM_LOG       := $(BUILD_DIR)/sim/sim.log
+SIM_LIB       := $(BUILD_DIR)/sim/work
 
 # =============================================================================
 # Helper: Parse YAML config to generate Verilog defines
 # =============================================================================
 # This extracts the config parameters from rvp_configs.yaml and converts them
-# to +define+ flags for the simulator.
+# to +define+ flags for the simulator. Uses 'py' (Windows Python launcher).
 define parse_config
 $(eval CONFIG_PARAMS := $(shell \
-	python3 -c "\
+	py -c "\
 import yaml, sys; \
 c = yaml.safe_load(open('$(CONFIGS_YAML)')); \
 cfg = c.get('$(CONFIG)'); \
 exit(1) if not cfg else None; \
 print(' '.join('+define+RVP_{}={}'.format(k,v) for k,v in cfg.items()))" 2>/dev/null || \
-	python3 -c "\
+	py -c "\
 import sys; \
 lines = open('$(CONFIGS_YAML)').read().split('\n'); \
 in_cfg = False; \
@@ -88,7 +98,7 @@ RTL_FILES := $(shell grep -v '^\s*//' $(FILELIST) | grep -v '^\s*$$' | grep -v '
 # =============================================================================
 # Phony targets
 # =============================================================================
-.PHONY: all sim synth test configs clean help
+.PHONY: all sim synth test configs clean help wave
 
 all: help
 
@@ -101,7 +111,8 @@ help:
 	@echo "==================================================================="
 	@echo ""
 	@echo "Targets:"
-	@echo "  sim      Run simulation (SIMULATOR=iverilog|verilator)"
+	@echo "  sim      Run simulation (SIMULATOR=modelsim|iverilog|verilator)"
+	@echo "  wave     Open waveform in ModelSim GUI"
 	@echo "  synth    Run Vivado synthesis"
 	@echo "  test     Run test suite"
 	@echo "  configs  List all available named configurations"
@@ -110,16 +121,19 @@ help:
 	@echo ""
 	@echo "Variables:"
 	@echo "  CONFIG       Named config (default: $(CONFIG))"
-	@echo "  SIMULATOR    Simulator: iverilog|verilator (default: $(SIMULATOR))"
+	@echo "  SIMULATOR    Simulator: modelsim|iverilog|verilator (default: $(SIMULATOR))"
 	@echo "  BOARD        Target board: nexys4|zybo (default: $(BOARD))"
-	@echo "  TOP_MODULE   Top-level RTL module (default: $(TOP_MODULE))"
+	@echo "  TOP_MODULE   Synthesis top-level RTL module (default: $(TOP_MODULE))"
+	@echo "  SIM_TOP      Simulation top-level module (default: $(SIM_TOP))"
+	@echo "  FIRMWARE     Firmware hex file path (default: none)"
 	@echo "  SIM_TIME     Simulation time (default: $(SIM_TIME))"
 	@echo ""
 	@echo "Examples:"
+	@echo "  make sim                                    # Default config"
 	@echo "  make sim CONFIG=phase3_icache_lru"
-	@echo "  make sim SIMULATOR=verilator CONFIG=phase3_full"
-	@echo "  make synth CONFIG=phase3_full BOARD=nexys4"
-	@echo "  make test"
+	@echo "  make sim FIRMWARE=tb/tests/build/add.hex"
+	@echo "  make test CONFIG=phase2_full_rv32i"
+	@echo "  make wave                                   # Open GUI waveform"
 	@echo "==================================================================="
 
 # =============================================================================
@@ -135,47 +149,105 @@ configs:
 	@echo "       make synth CONFIG=<name>"
 
 # =============================================================================
-# sim - Run simulation
+# show-config - Show parsed config parameters
 # =============================================================================
-# Uses iverilog or verilator based on SIMULATOR variable.
-# The config parameters from rvp_configs.yaml are passed as +define+ flags.
+show-config:
+	@echo "Current configuration: $(CONFIG)"
+	@echo "Raw parameters:"
+	@echo "$(CONFIG_PARAMS)" | tr ' ' '\n' | sed 's/^/  /'
+
+# =============================================================================
+# sim - Run simulation (supports modelsim, iverilog, verilator)
+# =============================================================================
 sim: $(BUILD_DIR)/sim
 	@echo "==================================================================="
 	@echo " Running simulation"
 	@echo "==================================================================="
 	@echo " Config:     $(CONFIG)"
 	@echo " Simulator:  $(SIMULATOR)"
-	@echo " Top module: $(TOP_MODULE)"
+	@echo " Top module: $(SIM_TOP)"
 	@echo " Sim time:   $(SIM_TIME)"
+	@[ -n "$(FIRMWARE)" ] && echo " Firmware:   $(FIRMWARE)" || true
+	@echo " Config params: $(CONFIG_PARAMS)"
 	@echo "==================================================================="
-	@if [ $(SIMULATOR) = iverilog ]; then \
-		echo "Compiling with iverilog..."; \
-		iverilog -g2012 \
-			-I $(CONFIG_DIR) \
-			$(CONFIG_PARAMS) \
-			-f $(FILELIST) \
-			$(TB_DIR)/$(TB_MODULE).sv \
-			-o $(BUILD_DIR)/sim/$(TOP_MODULE)_sim; \
-		echo "Running simulation..."; \
-		vvp $(BUILD_DIR)/sim/$(TOP_MODULE)_sim; \
-	elif [ $(SIMULATOR) = verilator ]; then \
-		echo "Compiling with Verilator..."; \
-		verilator --binary --top-module $(TOP_MODULE) \
-			+define+RVP_CONFIG_SVH=1 \
-			-I $(CONFIG_DIR) \
-			$(CONFIG_PARAMS) \
-			-f $(FILELIST) \
-			$(TB_DIR)/$(TB_MODULE).sv \
-			--Mdir $(BUILD_DIR)/sim/obj_dir; \
-		echo "Running simulation..."; \
-		$(BUILD_DIR)/sim/obj_dir/V$(TOP_MODULE); \
+	@if [ "$(SIMULATOR)" = "modelsim" ]; then \
+		$(MAKE) sim-modelsim; \
+	elif [ "$(SIMULATOR)" = "iverilog" ]; then \
+		$(MAKE) sim-iverilog; \
+	elif [ "$(SIMULATOR)" = "verilator" ]; then \
+		$(MAKE) sim-verilator; \
 	else \
-		echo "ERROR: Unknown simulator '$(SIMULATOR)'. Use 'iverilog' or 'verilator'."; \
+		echo "ERROR: Unknown simulator '$(SIMULATOR)'. Use 'modelsim', 'iverilog', or 'verilator'."; \
 		exit 1; \
 	fi
 	@echo "==================================================================="
 	@echo " Simulation complete"
 	@echo "==================================================================="
+
+# =============================================================================
+# sim-modelsim - ModelSim/QuestaSim simulation
+# =============================================================================
+sim-modelsim:
+	@echo "--- Creating ModelSim library: $(SIM_LIB) ---"
+	@mkdir -p $(SIM_LIB)
+	@-$(VLIB) $(SIM_LIB) 2>/dev/null
+	@echo "--- Compiling RTL with vlog ---"
+	@$(VLOG) -sv -work $(SIM_LIB) \
+		+define+RVP_CONFIG_SVH=1 \
+		+incdir+$(CONFIG_DIR) \
+		$(CONFIG_PARAMS) \
+		-f $(FILELIST) \
+		$(TB_DIR)/$(TB_MODULE).sv
+	@echo "--- Compilation done, running simulation with vsim ---"
+	@$(VSIM) -c -do "onbreak {resume}; run -all; quit" \
+		$(if $(FIRMWARE),-g/firmware=$(FIRMWARE),) \
+		-lib $(SIM_LIB) $(SIM_TOP)
+
+# =============================================================================
+# sim-iverilog - Icarus Verilog simulation (if available)
+# =============================================================================
+sim-iverilog:
+	@echo "Compiling with iverilog..."
+	iverilog -g2012 \
+		-I $(CONFIG_DIR) \
+		$(CONFIG_PARAMS) \
+		-f $(FILELIST) \
+		$(TB_DIR)/$(TB_MODULE).sv \
+		-o $(BUILD_DIR)/sim/$(SIM_TOP)_sim
+	@echo "Running simulation..."
+	vvp $(BUILD_DIR)/sim/$(SIM_TOP)_sim $(if $(FIRMWARE),+firmware+=$(FIRMWARE),)
+
+# =============================================================================
+# sim-verilator - Verilator simulation (if available)
+# =============================================================================
+sim-verilator:
+	@echo "Compiling with Verilator..."
+	verilator --binary --top-module $(SIM_TOP) \
+		+define+RVP_CONFIG_SVH=1 \
+		-I $(CONFIG_DIR) \
+		$(CONFIG_PARAMS) \
+		-f $(FILELIST) \
+		$(TB_DIR)/$(TB_MODULE).sv \
+		--Mdir $(BUILD_DIR)/sim/obj_dir
+	@echo "Running simulation..."
+	$(BUILD_DIR)/sim/obj_dir/V$(SIM_TOP) $(if $(FIRMWARE),+firmware+=$(FIRMWARE),)
+
+# =============================================================================
+# wave - Open ModelSim GUI to view waveforms
+# =============================================================================
+wave: $(BUILD_DIR)/sim
+	@echo "--- Compiling for GUI mode ---"
+	@mkdir -p $(SIM_LIB)
+	@-$(VLIB) $(SIM_LIB) 2>/dev/null
+	@$(VLOG) -sv -work $(SIM_LIB) \
+		+define+RVP_CONFIG_SVH=1 \
+		+incdir+$(CONFIG_DIR) \
+		$(CONFIG_PARAMS) \
+		-f $(FILELIST) \
+		$(TB_DIR)/$(TB_MODULE).sv
+	@echo "--- Launching ModelSim GUI ---"
+	@$(VSIM) -lib $(SIM_LIB) $(SIM_TOP) \
+		-do "add wave -r /*; run -all"
 
 # =============================================================================
 # synth - Run Vivado synthesis
@@ -209,7 +281,7 @@ sim-test: test-fw
 	@echo "Running simulation with test programs..."
 	@for hexfile in $(TB_DIR)/tests/build/*.hex; do \
 		echo "--- Running test: $$(basename $$hexfile) ---"; \
-		$(MAKE) sim CONFIG=$(CONFIG) SIM_TIME=$(SIM_TIME) || \
+		$(MAKE) sim CONFIG=$(CONFIG) SIM_TIME=$(SIM_TIME) FIRMWARE=$$hexfile || \
 			echo "FAILED: $$hexfile"; \
 	done
 
@@ -248,10 +320,3 @@ files:
 	@echo "-------------------------------------------------------------------"
 	@cat $(FILELIST) | grep -v '^\s*//' | grep -v '^\s*$$' | grep -v '^\s*#'
 	@echo "-------------------------------------------------------------------"
-
-# Show current config parameters
-.PHONY: show-config
-show-config:
-	@echo "Current configuration: $(CONFIG)"
-	@echo "Parameters:"
-	@echo "  $(CONFIG_PARAMS)" | tr ' ' '\n' | sed 's/^/  /'

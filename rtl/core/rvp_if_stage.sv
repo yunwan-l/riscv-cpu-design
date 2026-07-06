@@ -2,243 +2,141 @@
  * rvp_if_stage.sv - RVP Instruction Fetch Stage
  *
  * 取指阶段，负责从指令存储器获取指令并管理PC。
- * 参考ibex_if_stage.sv的设计。
  *
  * 主要功能:
  *   1. PC寄存器管理 - 维护当前程序计数器
  *   2. PC下一值计算 - PC+4、分支目标、异常向量
  *   3. 指令获取 - 从I-Cache或直接从存储器获取指令
- *   4. 取指请求/响应握手 - 与指令总线接口交互
- *
- * PC来源选择:
- *   - 启动地址 (boot_addr)
- *   - PC+4 (顺序取指)
- *   - 分支目标 (来自EX阶段)
- *   - 异常向量 (来自控制器)
- *   - 调试入口地址
- *
- * 条件实例化:
- *   - I-Cache使能: 实例化rvp_icache
- *   - I-Cache禁能: 直接从BRAM取指 (direct_fetch)
+ *   4. IF/ID流水线寄存器 - 锁存指令和PC
  */
 
 `include "rvp_config.svh"
 
 module rvp_if_stage import rvp_pkg::*; #(
-    parameter bit          ICacheEnable    = 1'b0,  // I-Cache使能
-    parameter int unsigned ICacheSizeBytes = 4096,  // I-Cache大小
-    parameter int unsigned ICacheNumWays   = 2,     // I-Cache路数
-    parameter int unsigned ICacheLineSize  = 64     // I-Cache行大小
+    parameter bit          ICacheEnable    = 1'b0,
+    parameter int unsigned ICacheSizeBytes = 4096,
+    parameter int unsigned ICacheNumWays   = 2,
+    parameter int unsigned ICacheLineSize  = 64
 ) (
-    // ==========================================================================
-    // 时钟与复位
-    // ==========================================================================
-    input  logic              clk_i,           // 时钟
-    input  logic              rst_ni,          // 异步低复位
+    input  logic              clk_i,
+    input  logic              rst_ni,
 
-    // ==========================================================================
-    // 启动配置
-    // ==========================================================================
-    input  logic [31:0]       boot_addr_i,    // 启动地址 (复位PC)
+    input  logic [31:0]       boot_addr_i,
+    input  logic [31:0]       pc_src_i,
+    input  logic [2:0]        pc_sel_i,
+    input  logic              pc_set_i,
+    input  logic [2:0]        exc_pc_mux_i,
 
-    // ==========================================================================
-    // PC控制输入
-    // ==========================================================================
-    input  logic [31:0]       pc_src_i,       // 分支/跳转目标地址
-    input  logic [2:0]        pc_sel_i,        // PC选择信号
-    input  logic              pc_set_i,        // PC设置有效 (跳转请求)
-    input  logic [2:0]        exc_pc_mux_i,   // 异常PC选择
+    // 指令总线接口
+    output logic              instr_req_o,
+    input  logic              instr_gnt_i,
+    input  logic              instr_rvalid_i,
+    output logic [31:0]       instr_addr_o,
+    input  logic [31:0]       instr_rdata_i,
 
-    // ==========================================================================
-    // 指令总线接口 (输出到存储器/总线)
-    // ==========================================================================
-    output logic              instr_req_o,     // 指令请求
-    input  logic              instr_gnt_i,     // 指令授权
-    input  logic              instr_rvalid_i,  // 指令有效
-    output logic [31:0]       instr_addr_o,    // 指令地址
-    input  logic [31:0]       instr_rdata_i,   // 指令数据
-
-    // ==========================================================================
     // 输出到ID阶段
-    // ==========================================================================
-    output logic [31:0]       instr_rdata_o,  // 取到的指令
-    output logic [31:0]       pc_o,           // 当前PC
-    output logic              instr_valid_o,   // 指令有效
-    output logic              instr_fetch_err_o, // 取指错误
+    output logic [31:0]       instr_rdata_o,
+    output logic [31:0]       pc_o,
+    output logic              instr_valid_o,
+    output logic              instr_fetch_err_o,
 
-    // ==========================================================================
-    // 流水线控制信号
-    // ==========================================================================
-    input  logic              stall_i,        // 流水线停顿
-    input  logic              flush_i,        // 流水线刷新
-
-    // ==========================================================================
-    // 专用接口 (I-Cache模式)
-    // ==========================================================================
-`ifdef RVP_ICACHE_ENABLE
-    // TODO: I-Cache RAM接口
-`endif
-
-    // ==========================================================================
-    // 调试接口
-    // ==========================================================================
-    input  logic              debug_req_i      // 调试请求
+    // 流水线控制
+    input  logic              stall_i,
+    input  logic              flush_i,
+    input  logic              debug_req_i
 );
 
   import rvp_pkg::*;
 
   // ==========================================================================
-  // PC选择编码定义
+  // PC选择编码
   // ==========================================================================
-  // PC_SEL_BOOT   = 0  - 启动地址
-  // PC_SEL_PC4    = 1  - PC+4 (顺序取指)
-  // PC_SEL_BRANCH = 2  - 分支目标
-  // PC_SEL_EXC    = 3  - 异常向量
-  // PC_SEL_DEBUG  = 4  - 调试入口
+  // PC_SEL_BOOT   = 3'd0 - 启动地址
+  // PC_SEL_PC4    = 3'd1 - PC+4
+  // PC_SEL_BRANCH = 3'd2 - 分支目标
+  // PC_SEL_EXC    = 3'd3 - 异常向量
 
   // ==========================================================================
-  // 内部信号声明
+  // 内部信号
   // ==========================================================================
 
-  // PC寄存器
-  logic [31:0] pc_q;              // PC寄存器 (当前)
-  logic [31:0] pc_d;              // PC下一值
+  logic [31:0] pc_q;
+  logic [31:0] pc_d;
+  logic [31:0] pc_plus4;
 
-  // PC+4计算
-  logic [31:0] pc_plus4;          // PC+4
-
-  // 取指地址
-  logic [31:0] fetch_addr;       // 实际取指地址
-
-  // 取指状态
-  logic        fetch_valid;      // 取指有效
-  logic        fetch_ready;      // 取指就绪
-
-  // 指令寄存器 (IF/ID流水线寄存器)
-  logic [31:0] instr_q;          // 指令寄存器
-  logic [31:0] pc_if_q;          // PC寄存器 (传递到ID)
+  logic [31:0] instr_q;
+  logic [31:0] pc_if_q;
+  logic        fetch_valid;
 
   // ==========================================================================
   // PC+4 计算
   // ==========================================================================
-  // 顺序取指时PC自动加4
-  // TODO: assign pc_plus4 = pc_q + 32'd4;
+  assign pc_plus4 = pc_q + 32'd4;
 
   // ==========================================================================
-  // PC下一值选择逻辑 (pc_next_logic)
+  // PC下一值选择
   // ==========================================================================
   always_comb begin
-    pc_d = pc_q;  // 默认保持
+    unique case (pc_sel_i)
+      3'd0: pc_d = boot_addr_i;   // 启动地址
+      3'd1: pc_d = pc_plus4;      // PC+4
+      3'd2: pc_d = pc_src_i;      // 分支/跳转目标
+      3'd3: pc_d = exc_pc_mux_i;  // 异常向量
+      default: pc_d = pc_plus4;   // 默认PC+4
+    endcase
 
-    // TODO: 根据pc_sel_i选择PC下一值
-    // unique case (pc_sel_i)
-    //   3'd0: pc_d = boot_addr_i;      // 启动地址
-    //   3'd1: pc_d = pc_plus4;         // PC+4
-    //   3'd2: pc_d = pc_src_i;         // 分支/跳转目标
-    //   3'd3: pc_d = exc_pc_mux_i;     // 异常向量
-    //   3'd4: pc_d = debug_addr;       // 调试入口
-    //   default: pc_d = pc_plus4;      // 默认PC+4
-    // endcase
-
-    // Stall时保持PC不变
-    // if (stall_i) pc_d = pc_q;
-
-    // Flush时PC从分支目标或异常向量开始
-    // if (flush_i) pc_d = pc_src_i;
+    if (stall_i) pc_d = pc_q;
+    if (flush_i) pc_d = pc_src_i;
   end
 
   // ==========================================================================
-  // PC寄存器 (pc_register)
+  // PC寄存器
   // ==========================================================================
-  // TODO: PC寄存器
-  // always_ff @(posedge clk_i or negedge rst_ni) begin
-  //   if (!rst_ni) begin
-  //     pc_q <= boot_addr_i;
-  //   end else if (!stall_i) begin
-  //     pc_q <= pc_d;
-  //   end
-  // end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      pc_q <= boot_addr_i;
+    end else if (!stall_i) begin
+      pc_q <= pc_d;
+    end
+  end
 
   // ==========================================================================
-  // 取指地址输出
+  // 取指地址和请求
   // ==========================================================================
-  // TODO: assign fetch_addr = pc_q;
-  // TODO: assign instr_addr_o = fetch_addr;
+  assign instr_addr_o = pc_q;
+  assign instr_req_o  = ~stall_i & ~flush_i;
 
-  // ==========================================================================
-  // 指令获取: 条件实例化
-  // ==========================================================================
-
-`ifdef RVP_ICACHE_ENABLE
-  // ========================================================================
-  // I-Cache模式: 实例化指令缓存
-  // ========================================================================
-  // TODO: rvp_icache icache (
-  //   .clk_i       (clk_i),
-  //   .rst_ni      (rst_ni),
-  //   .req_i       (instr_req_o),
-  //   .gnt_o       (instr_gnt_i),
-  //   .addr_i      (fetch_addr),
-  //   .rdata_o     (instr_rdata_o),
-  //   .rvalid_o    (instr_valid_o),
-  //   .flush_i     (flush_i),
-  //   .stall_i     (stall_i)
-  // );
-
-  // I-Cache未命中时通过总线获取
-  // TODO: 实现I-Cache miss处理逻辑
-`else
-  // ========================================================================
-  // 直接取指模式: 直接从BRAM获取指令
-  // ========================================================================
-  // TODO: direct_fetch direct_fetch_inst (
-  //   .clk_i       (clk_i),
-  //   .rst_ni      (rst_ni),
-  //   .addr_i      (fetch_addr),
-  //   .rdata_o     (instr_rdata_o),
-  //   .req_o       (instr_req_o),
-  //   .gnt_i       (instr_gnt_i),
-  //   .rvalid_i    (instr_rvalid_i),
-  //   .rdata_i     (instr_rdata_i),
-  //   .stall_i     (stall_i)
-  // );
-`endif
+  // 直接取指模式: 从总线获取指令 (I-Cache禁用时)
+  assign fetch_valid = instr_rvalid_i;
 
   // ==========================================================================
   // IF/ID 流水线寄存器
   // ==========================================================================
-  // TODO: 指令和PC锁存到IF/ID寄存器
-  // always_ff @(posedge clk_i or negedge rst_ni) begin
-  //   if (!rst_ni) begin
-  //     instr_q  <= 32'h0;
-  //     pc_if_q  <= 32'h0;
-  //   end else if (flush_i) begin
-  //     // Flush: 插入NOP指令
-  //     instr_q  <= 32'h00000013;  // NOP (ADDI x0, x0, 0)
-  //     pc_if_q  <= 32'h0;
-  //   end else if (!stall_i) begin
-  //     // 正常: 锁存指令和PC
-  //     instr_q  <= instr_rdata_i;
-  //     pc_if_q  <= pc_q;
-  //   end
-  // end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      instr_q   <= 32'h00000013;   // NOP (ADDI x0, x0, 0)
+      pc_if_q   <= 32'h0;
+    end else if (flush_i) begin
+      instr_q   <= 32'h00000013;   // NOP
+      pc_if_q   <= 32'h0;
+    end else if (!stall_i) begin
+      instr_q   <= instr_rdata_i;
+      pc_if_q   <= pc_q;
+    end
+  end
 
   // ==========================================================================
   // 输出赋值
   // ==========================================================================
-  // TODO: assign instr_rdata_o = instr_q;
-  // TODO: assign pc_o          = pc_if_q;
-  // TODO: assign instr_valid_o = fetch_valid & ~flush_i;
-  // TODO: assign instr_fetch_err_o = 1'b0;  // 暂不支持取指错误
+  assign instr_rdata_o    = instr_q;
+  assign pc_o             = pc_if_q;
+  assign instr_valid_o    = fetch_valid & ~flush_i;
+  assign instr_fetch_err_o = 1'b0;
 
   // ==========================================================================
-  // 取指请求生成
+  // 未使用信号
   // ==========================================================================
-  // TODO: assign instr_req_o = ~stall_i & ~flush_i;
-
-  // ==========================================================================
-  // 调试处理
-  // ==========================================================================
-  // TODO: 处理debug_req_i，暂停取指
+  logic unused_pc_set;
+  assign unused_pc_set = pc_set_i;
 
 endmodule

@@ -8,6 +8,8 @@
  * Reference: ibex_pkg.sv lines 381-401 (ICache parameters)
  */
 
+`include "rvp_config.svh"
+
 package rvp_cache_pkg;
 
   import rvp_pkg::*;

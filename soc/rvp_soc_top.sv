@@ -46,7 +46,7 @@ module rvp_soc_top import rvp_pkg::*; #(
     parameter bit          RV32C          = `RVP_RV32C,        // C扩展使能
     parameter int unsigned PipelineStages  = `RVP_PIPELINE_STAGES,
     parameter bit          WritebackStage  = `RVP_WRITEBACK_STAGE,
-    parameter bit          Forwarding      = `RVP_FORWARDING,
+    parameter bit          Forwarding      = 0,  // 0 = stall-only (Phase 2)
 
     // ==========================================================================
     // 存储器参数

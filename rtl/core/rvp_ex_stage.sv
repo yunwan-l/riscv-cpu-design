@@ -2,7 +2,6 @@
  * rvp_ex_stage.sv - RVP Execute Stage
  *
  * 执行阶段，负责ALU运算、分支判定和跳转目标计算。
- * 参考ibex_ex_block.sv的设计。
  *
  * 主要功能:
  *   1. ALU运算 - 执行算术、逻辑、移位等操作
@@ -11,183 +10,151 @@
  *   4. 操作数选择 - 从寄存器值、立即数、PC中选择ALU操作数
  *   5. 前递数据选择 - 根据前递信号选择操作数来源 (条件编译)
  *
- * 数据流:
- *   ID → [ID/EX reg] → EX(ALU+Branch) → [EX/MEM reg] → MEM
- *
  * 内部子模块:
  *   - rvp_alu         : 算术逻辑单元
  *   - rvp_branch_unit : 分支判定单元
- *   - forward_mux     : 前递多路选择器 (条件编译)
  */
 
 `include "rvp_config.svh"
 
 module rvp_ex_stage import rvp_pkg::*; (
-    // ==========================================================================
-    // 时钟与复位
-    // ==========================================================================
-    input  logic              clk_i,           // 时钟
-    input  logic              rst_ni,          // 异步低复位
+    input  logic              clk_i,
+    input  logic              rst_ni,
 
-    // ==========================================================================
     // 来自ID阶段的输入
-    // ==========================================================================
-    input  ctrl_signals_t    ctrl_signals_i,  // 控制信号
-    input  logic [31:0]       rs1_rdata_i,     // rs1读数据
-    input  logic [31:0]       rs2_rdata_i,     // rs2读数据
-    input  logic [31:0]       imm_i,          // 立即数
-    input  logic [31:0]       pc_i,            // 当前PC
-    input  logic [REG_ADDR_W-1:0] rs1_addr_i,  // rs1地址
-    input  logic [REG_ADDR_W-1:0] rs2_addr_i,  // rs2地址
-    input  logic [REG_ADDR_W-1:0] rd_addr_i,   // rd地址
-    input  logic              instr_valid_i,   // 指令有效
+    input  ctrl_signals_t    ctrl_signals_i,
+    input  logic [31:0]       rs1_rdata_i,
+    input  logic [31:0]       rs2_rdata_i,
+    input  logic [31:0]       imm_i,
+    input  logic [31:0]       pc_i,
+    input  logic [REG_ADDR_W-1:0] rs1_addr_i,
+    input  logic [REG_ADDR_W-1:0] rs2_addr_i,
+    input  logic [REG_ADDR_W-1:0] rd_addr_i,
+    input  logic              instr_valid_i,
 
-    // ==========================================================================
     // 前递输入 (条件编译)
-    // ==========================================================================
 `ifdef RVP_FORWARDING
-    input  forward_sel_e     forward_a_i,     // rs1前递选择
-    input  forward_sel_e     forward_b_i,     // rs2前递选择
-    input  logic [31:0]       forward_a_data_i, // rs1前递数据
-    input  logic [31:0]       forward_b_data_i, // rs2前递数据
+    input  forward_sel_e     forward_a_i,
+    input  forward_sel_e     forward_b_i,
+    input  logic [31:0]       forward_a_data_i,
+    input  logic [31:0]       forward_b_data_i,
 `endif
 
-    // ==========================================================================
-    // ALU操作数 (简化接口)
-    // ==========================================================================
-    input  alu_op_e           alu_op_i,        // ALU操作选择
-    input  logic              alu_src_a_i,     // 操作数A源: 0=rs1, 1=PC
-    input  logic              alu_src_b_i,     // 操作数B源: 0=rs2, 1=imm
+    // ALU操作数
+    input  alu_op_e           alu_op_i,
+    input  logic              alu_src_a_i,
+    input  logic              alu_src_b_i,
 
-    // ==========================================================================
     // 输出到MEM阶段
-    // ==========================================================================
-    output logic [31:0]       alu_result_o,    // ALU结果
-    output logic              alu_result_valid_o, // ALU结果有效
-    output logic [31:0]       mem_addr_o,      // 内存地址 (ALU结果)
-    output logic [31:0]       mem_wdata_o,     // 内存写数据 (rs2值)
-    output logic              mem_req_o,        // 内存请求
-    output logic              mem_we_o,         // 内存写使能
-    output mem_size_e         mem_size_o,       // 内存访问大小
-    output logic [31:0]       pc4_o,           // PC+4 (返回地址)
-    output logic [REG_ADDR_W-1:0] rd_addr_o,   // rd地址 (传递到MEM/WB)
-    output logic              rf_we_o,         // 寄存器写使能
-    output wb_src_e           wb_src_o,        // 写回源选择
-    output logic              instr_valid_o,   // 指令有效 (传递到MEM)
+    output logic [31:0]       alu_result_o,
+    output logic              alu_result_valid_o,
+    output logic [31:0]       mem_addr_o,
+    output logic [31:0]       mem_wdata_o,
+    output logic              mem_req_o,
+    output logic              mem_we_o,
+    output mem_size_e         mem_size_o,
+    output logic [31:0]       pc4_o,
+    output logic [REG_ADDR_W-1:0] rd_addr_o,
+    output logic              rf_we_o,
+    output wb_src_e           wb_src_o,
+    output logic              instr_valid_o,
 
-    // ==========================================================================
-    // 分支输出 (到IF阶段/控制器)
-    // ==========================================================================
-    output logic              branch_taken_o,   // 分支跳转信号
-    output logic [31:0]       branch_target_o,  // 分支目标地址
+    // 分支输出
+    output logic              branch_taken_o,
+    output logic [31:0]       branch_target_o,
 
-    // ==========================================================================
-    // 流水线控制信号
-    // ==========================================================================
-    input  logic              stall_i,        // 流水线停顿
-    input  logic              flush_i         // 流水线刷新
+    // 流水线控制
+    input  logic              stall_i,
+    input  logic              flush_i
 );
 
   import rvp_pkg::*;
 
   // ==========================================================================
-  // 内部信号声明
+  // 内部信号
   // ==========================================================================
 
   // ID/EX流水线寄存器
-  ctrl_signals_t      ctrl_signals_q;    // 控制信号寄存器
-  logic [31:0]        rs1_rdata_q;       // rs1数据寄存器
-  logic [31:0]        rs2_rdata_q;       // rs2数据寄存器
-  logic [31:0]        imm_q;             // 立即数寄存器
-  logic [31:0]        pc_q;              // PC寄存器
-  logic [REG_ADDR_W-1:0] rs1_addr_q;     // rs1地址寄存器
-  logic [REG_ADDR_W-1:0] rs2_addr_q;     // rs2地址寄存器
-  logic [REG_ADDR_W-1:0] rd_addr_q;      // rd地址寄存器
-  logic               instr_valid_q;     // 指令有效寄存器
+  ctrl_signals_t      ctrl_signals_q;
+  logic [31:0]        rs1_rdata_q;
+  logic [31:0]        rs2_rdata_q;
+  logic [31:0]        imm_q;
+  logic [31:0]        pc_q;
+  logic [REG_ADDR_W-1:0] rs1_addr_q;
+  logic [REG_ADDR_W-1:0] rs2_addr_q;
+  logic [REG_ADDR_W-1:0] rd_addr_q;
+  logic               instr_valid_q;
 
   // ALU操作数
-  logic [31:0]        operand_a;         // ALU操作数A
-  logic [31:0]        operand_b;         // ALU操作数B
-
-  // 前递后的操作数
-  logic [31:0]        operand_a_fwd;     // 前递后操作数A
-  logic [31:0]        operand_b_fwd;     // 前递后操作数B
+  logic [31:0]        operand_a;
+  logic [31:0]        operand_b;
+  logic [31:0]        operand_a_fwd;
+  logic [31:0]        operand_b_fwd;
 
   // ALU输出
-  logic [31:0]        alu_result;        // ALU结果
-  logic               alu_comparison;    // ALU比较结果
-  logic               alu_is_equal;      // ALU相等结果
+  logic [31:0]        alu_result;
+  logic               alu_comparison;
+  logic               alu_is_equal;
 
   // 分支单元输出
-  logic               branch_taken;      // 分支跳转
-  logic [31:0]        branch_target;     // 分支目标
+  logic               branch_taken;
+  logic [31:0]        branch_target;
 
   // PC+4
-  logic [31:0]        pc_plus4;          // PC+4计算结果
+  logic [31:0]        pc_plus4;
 
   // ==========================================================================
   // ID/EX 流水线寄存器
   // ==========================================================================
-  // TODO: 锁存ID阶段的数据
-  // always_ff @(posedge clk_i or negedge rst_ni) begin
-  //   if (!rst_ni) begin
-  //     ctrl_signals_q <= '0;
-  //     rs1_rdata_q    <= 32'b0;
-  //     rs2_rdata_q    <= 32'b0;
-  //     imm_q           <= 32'b0;
-  //     pc_q            <= 32'b0;
-  //     rs1_addr_q      <= 5'b0;
-  //     rs2_addr_q      <= 5'b0;
-  //     rd_addr_q       <= 5'b0;
-  //     instr_valid_q   <= 1'b0;
-  //   end else if (flush_i) begin
-  //     // Flush: 插入bubble
-  //     ctrl_signals_q.reg_write <= 1'b0;
-  //     ctrl_signals_q.mem_read  <= 1'b0;
-  //     ctrl_signals_q.mem_write <= 1'b0;
-  //     instr_valid_q            <= 1'b0;
-  //   end else if (!stall_i) begin
-  //     ctrl_signals_q <= ctrl_signals_i;
-  //     rs1_rdata_q    <= rs1_rdata_i;
-  //     rs2_rdata_q    <= rs2_rdata_i;
-  //     imm_q           <= imm_i;
-  //     pc_q            <= pc_i;
-  //     rs1_addr_q      <= rs1_addr_i;
-  //     rs2_addr_q      <= rs2_addr_i;
-  //     rd_addr_q       <= rd_addr_i;
-  //     instr_valid_q   <= instr_valid_i;
-  //   end
-  // end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      ctrl_signals_q <= '0;
+      rs1_rdata_q    <= 32'b0;
+      rs2_rdata_q    <= 32'b0;
+      imm_q          <= 32'b0;
+      pc_q           <= 32'b0;
+      rs1_addr_q     <= 5'b0;
+      rs2_addr_q     <= 5'b0;
+      rd_addr_q      <= 5'b0;
+      instr_valid_q  <= 1'b0;
+    end else if (flush_i) begin
+      ctrl_signals_q.reg_write <= 1'b0;
+      ctrl_signals_q.mem_read  <= 1'b0;
+      ctrl_signals_q.mem_write <= 1'b0;
+      instr_valid_q            <= 1'b0;
+    end else if (!stall_i) begin
+      ctrl_signals_q <= ctrl_signals_i;
+      rs1_rdata_q    <= rs1_rdata_i;
+      rs2_rdata_q    <= rs2_rdata_i;
+      imm_q          <= imm_i;
+      pc_q           <= pc_i;
+      rs1_addr_q     <= rs1_addr_i;
+      rs2_addr_q     <= rs2_addr_i;
+      rd_addr_q      <= rd_addr_i;
+      instr_valid_q  <= instr_valid_i;
+    end
+  end
 
   // ==========================================================================
-  // 前递多路选择器 (forward_mux) - 条件编译
+  // 前递多路选择器
   // ==========================================================================
 `ifdef RVP_FORWARDING
-  // TODO: rs1前递选择
-  // always_comb begin
-  //   unique case (forward_a_i)
-  //     FWD_NONE:    operand_a_fwd = rs1_rdata_q;
-  //     FWD_EX_MEM:  operand_a_fwd = forward_a_data_i;
-  //     FWD_MEM_WB:  operand_a_fwd = forward_a_data_i;
-  //     FWD_WB:      operand_a_fwd = forward_a_data_i;
-  //     default:     operand_a_fwd = rs1_rdata_q;
-  //   endcase
-  // end
+  always_comb begin
+    unique case (forward_a_i)
+      FWD_EX_MEM, FWD_MEM_WB, FWD_WB: operand_a_fwd = forward_a_data_i;
+      default:                         operand_a_fwd = rs1_rdata_q;
+    endcase
+  end
 
-  // TODO: rs2前递选择
-  // always_comb begin
-  //   unique case (forward_b_i)
-  //     FWD_NONE:    operand_b_fwd = rs2_rdata_q;
-  //     FWD_EX_MEM:  operand_b_fwd = forward_b_data_i;
-  //     FWD_MEM_WB:  operand_b_fwd = forward_b_data_i;
-  //     FWD_WB:      operand_b_fwd = forward_b_data_i;
-  //     default:     operand_b_fwd = rs2_rdata_q;
-  //   endcase
-  // end
+  always_comb begin
+    unique case (forward_b_i)
+      FWD_EX_MEM, FWD_MEM_WB, FWD_WB: operand_b_fwd = forward_b_data_i;
+      default:                         operand_b_fwd = rs2_rdata_q;
+    endcase
+  end
 `else
-  // 无前递: 直接使用寄存器值
-  // TODO: assign operand_a_fwd = rs1_rdata_q;
-  // TODO: assign operand_b_fwd = rs2_rdata_q;
+  assign operand_a_fwd = rs1_rdata_q;
+  assign operand_b_fwd = rs2_rdata_q;
 `endif
 
   // ==========================================================================
@@ -195,10 +162,10 @@ module rvp_ex_stage import rvp_pkg::*; (
   // ==========================================================================
 
   // 操作数A: rs1值 或 PC
-  // TODO: assign operand_a = ctrl_signals_q.alu_src_a ? pc_q : operand_a_fwd;
+  assign operand_a = ctrl_signals_q.alu_src_a ? pc_q : operand_a_fwd;
 
   // 操作数B: rs2值 或 立即数
-  // TODO: assign operand_b = ctrl_signals_q.alu_src_b ? imm_q : operand_b_fwd;
+  assign operand_b = ctrl_signals_q.alu_src_b ? imm_q : operand_b_fwd;
 
   // ==========================================================================
   // ALU实例化
@@ -208,11 +175,11 @@ module rvp_ex_stage import rvp_pkg::*; (
     .operand_b_i        (operand_b),
     .alu_op_i           (ctrl_signals_q.alu_op),
 `ifdef RVP_RV32M
-    .multdiv_ready_i    (1'b1),     // TODO: 连接乘除法器
-    .multdiv_result_i   (32'b0),    // TODO: 连接乘除法器
-    .multdiv_sel_i      (1'b0),     // TODO: 连接乘除法器
-    .mult_en_o          (),         // TODO: 连接乘除法器
-    .div_en_o           (),         // TODO: 连接乘除法器
+    .multdiv_ready_i    (1'b1),       // TODO: Multi-cycle M extension
+    .multdiv_result_i   (32'b0),
+    .multdiv_sel_i      (1'b0),
+    .mult_en_o          (),
+    .div_en_o           (),
 `endif
     .result_o           (alu_result),
     .comparison_result_o(alu_comparison),
@@ -231,42 +198,39 @@ module rvp_ex_stage import rvp_pkg::*; (
     .is_jal_i       (ctrl_signals_q.jump & ~ctrl_signals_q.jalr),
     .is_jalr_i      (ctrl_signals_q.jalr),
     .branch_taken_o (branch_taken),
-    .branch_target_o (branch_target)
+    .branch_target_o(branch_target)
   );
 
   // ==========================================================================
   // PC+4 计算
   // ==========================================================================
-  // TODO: assign pc_plus4 = pc_q + 32'd4;
+  assign pc_plus4 = pc_q + 32'd4;
 
   // ==========================================================================
   // 输出赋值
   // ==========================================================================
 
-  // ALU结果
-  // TODO: assign alu_result_o       = alu_result;
-  // TODO: assign alu_result_valid_o  = instr_valid_q & ~flush_i;
+  assign alu_result_o       = alu_result;
+  // Note: Do NOT gate with ~flush_i here — it creates a combinational loop
+  // flush_ex → rf_we_o → ex_reg_write_i → raw_ex_hazard → any_stall → flush_ex
+  // The flush clears ctrl_signals_q.reg_write to 0, so rf_we_o is already 0 after flush.
+  assign alu_result_valid_o = instr_valid_q;
 
-  // 内存接口
-  // TODO: assign mem_addr_o          = alu_result;
-  // TODO: assign mem_wdata_o          = operand_b_fwd;  // rs2值或前递值
-  // TODO: assign mem_req_o           = (ctrl_signals_q.mem_read | ctrl_signals_q.mem_write) & instr_valid_q;
-  // TODO: assign mem_we_o            = ctrl_signals_q.mem_write;
-  // TODO: assign mem_size_o          = ctrl_signals_q.mem_size;
+  assign mem_addr_o  = alu_result;
+  assign mem_wdata_o = operand_b_fwd;
+  assign mem_req_o   = (ctrl_signals_q.mem_read | ctrl_signals_q.mem_write) & instr_valid_q;
+  assign mem_we_o    = ctrl_signals_q.mem_write;
+  assign mem_size_o  = ctrl_signals_q.mem_size;
 
-  // PC+4
-  // TODO: assign pc4_o               = pc_plus4;
+  assign pc4_o = pc_plus4;
 
-  // 寄存器写回
-  // TODO: assign rd_addr_o          = rd_addr_q;
-  // TODO: assign rf_we_o            = ctrl_signals_q.reg_write & instr_valid_q & ~flush_i;
-  // TODO: assign wb_src_o           = ctrl_signals_q.wb_src;
+  assign rd_addr_o  = rd_addr_q;
+  assign rf_we_o    = ctrl_signals_q.reg_write & instr_valid_q;
+  assign wb_src_o   = ctrl_signals_q.wb_src;
 
-  // 分支输出
-  // TODO: assign branch_taken_o     = branch_taken & instr_valid_q;
-  // TODO: assign branch_target_o    = branch_target;
+  assign branch_taken_o  = branch_taken & instr_valid_q;
+  assign branch_target_o = branch_target;
 
-  // 指令有效
-  // TODO: assign instr_valid_o      = instr_valid_q;
+  assign instr_valid_o = instr_valid_q;
 
 endmodule

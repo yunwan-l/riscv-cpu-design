@@ -68,6 +68,13 @@ riscv-cpu-design/
 ├── tb/                            # 仿真测试
 │   ├── rvp_tb.sv                  #   顶层 testbench
 │   ├── rvp_test_utils.svh         #   测试宏
+│   ├── tb_alu.sv                  #   ALU 单元测试
+│   ├── tb_branch_unit.sv         #   分支单元测试
+│   ├── tb_core_pipeline.sv       #   流水线核心测试
+│   ├── tb_core_single.sv         #   单周期核心测试
+│   ├── tb_decoder.sv              #   译码器测试
+│   ├── tb_imm_generator.sv       #   立即数生成器测试
+│   ├── tb_register_file.sv       #   寄存器堆测试
 │   └── tests/
 │       ├── Makefile               #     固件编译 (.S → .hex)
 │       └── README.md              #     42 个测试用例说明
@@ -77,6 +84,8 @@ riscv-cpu-design/
 │       ├── create_project.tcl     #     建工程脚本
 │       ├── run_synth.tcl          #     综合与报告
 │       └── rvp_nexys4.xdc         #     NEXYS4 约束 (clk/UART/GPIO)
+│
+├── rvp_build.py                   # Python 构建脚本 (Windows/ModelSim)
 │
 ├── document/                      # 文档与参考资料
 │   ├── nexys4解释.md
@@ -109,4 +118,4 @@ riscv-cpu-design/
 2. **Phase 2 — 完整 SoC**：`phase2_full_rv32i` 配置，完整 RV32I + 外设 + 内存
 3. **Phase 3 — Cache 拓展**：`phase3_icache_*` 配置，6 种替换策略对比分析
 
-> 当前所有模块为框架代码 (接口与结构已定义，逻辑体标注 TODO)，尚未开始具体实现。
+> Phase 1 & 2 核心模块已完成实现。用 `py rvp_build.py sim -c phase2_full_rv32i -f <固件.hex>` 运行仿真。

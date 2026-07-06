@@ -87,8 +87,15 @@ module rvp_ram_1p #(
   logic [31:0] mem [Depth];
 
   // 预加载固件 (仿真用)
+  // 优先级: +firmware+ plusarg > MemInitFile parameter
+  string firmware_file;
   initial begin
-    if (MemInitFile != "") begin
+    // 尝试从命令行参数获取固件文件
+    if ($value$plusargs("firmware=%s", firmware_file)) begin
+      $display("[RAM] Loading firmware from +firmware+=%s", firmware_file);
+      $readmemh(firmware_file, mem);
+    end else if (MemInitFile != "") begin
+      $display("[RAM] Loading firmware from MemInitFile: %s", MemInitFile);
       $readmemh(MemInitFile, mem);
     end
   end

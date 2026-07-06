@@ -4,3 +4,13 @@
 
 # 提取中间文件
 document/nexys 4 ddr/extracted/
+
+# RISC-V 工具链（太大，各自安装）
+riscv-toolchain.zip
+
+# 构建产物
+build/
+work/
+*.vcd
+*.wlf
+transcript

@@ -1,186 +1,169 @@
-/**
- * rvp_pkg.sv - RVP Global Package
- *
- * Central definitions for all constants, types, and enums used across
- * the RVP processor. Modeled after ibex_pkg.sv.
- *
- * All modules import this package:  import rvp_pkg::*;
- */
+// =============================================================================
+// rvp_pkg.sv — RVP 全局包文件
+// =============================================================================
+// 作用：集中定义所有模块共享的类型（枚举、结构体、参数）。
+// 就像一本"字典"，其它模块 `import rvp_pkg::*;` 后就能用这里定义的类型。
+//
+// 当前内容：ALU 操作码（第一阶段）
+// 后续会逐步加入：控制信号结构体、立即数类型、FSM 状态、CSR 等
+// =============================================================================
 
 package rvp_pkg;
 
-  // ==========================================================================
-  // Global Width Constants
-  // ==========================================================================
-
-  parameter int unsigned DATA_W       = 32;    // Data bus width
-  parameter int unsigned ADDR_W       = 32;    // Address bus width
-  parameter int unsigned INSTR_W      = 32;    // Instruction width
-  parameter int unsigned REG_ADDR_W   = 5;     // Register address width (x0-x31)
-  parameter int unsigned REG_DATA_W   = 32;    // Register data width
-
-  // ==========================================================================
-  // RV32I Opcode Definitions
-  // ==========================================================================
-
-  typedef enum logic [6:0] {
-    OPCODE_LUI     = 7'b0110111,   // Load Upper Immediate
-    OPCODE_AUIPC   = 7'b0010111,   // Add Upper Immediate to PC
-    OPCODE_JAL     = 7'b1101111,   // Jump and Link
-    OPCODE_JALR    = 7'b1100111,   // Jump and Link Register
-    OPCODE_BRANCH  = 7'b1100011,   // Conditional Branch (BEQ, BNE, etc.)
-    OPCODE_LOAD    = 7'b0000011,   // Load (LB, LH, LW, LBU, LHU)
-    OPCODE_STORE   = 7'b0100011,   // Store (SB, SH, SW)
-    OPCODE_OP_IMM  = 7'b0010011,   // ALU Immediate (ADDI, SLTI, etc.)
-    OPCODE_OP      = 7'b0110011,   // ALU Register (ADD, SUB, etc.)
-    OPCODE_MISC    = 7'b0001111,   // FENCE (treated as NOP for now)
-    OPCODE_SYSTEM  = 7'b1110011,    // ECALL, EBREAK, CSR
-    OPCODE_MADD    = 7'b1000011,   // M-extension: MUL (R-type OP variant)
-    OPCODE_CUSTOM0 = 7'b0001011    // Custom instruction space (PCPI)
-  } opcode_e;
-
-  // ==========================================================================
-  // ALU Operations
-  // ==========================================================================
-
-  typedef enum logic [3:0] {
-    ALU_ADD   = 4'd0,   // Addition
-    ALU_SUB   = 4'd1,   // Subtraction
-    ALU_SLL   = 4'd2,   // Shift Left Logical
-    ALU_SLT   = 4'd3,   // Set Less Than (signed)
-    ALU_SLTU  = 4'd4,   // Set Less Than Unsigned
-    ALU_XOR   = 4'd5,   // XOR
-    ALU_SRL   = 4'd6,   // Shift Right Logical
-    ALU_SRA   = 4'd7,   // Shift Right Arithmetic
-    ALU_OR    = 4'd8,   // OR
-    ALU_AND   = 4'd9,   // AND
-    ALU_LUI   = 4'd10,  // Pass-through immediate (LUI)
-    ALU_MUL   = 4'd11,  // MUL (M-extension)
-    ALU_MULH  = 4'd12,  // MULH (M-extension)
-    ALU_DIV   = 4'd13,  // DIV (M-extension)
-    ALU_REM   = 4'd14,  // REM (M-extension)
-    ALU_NOP   = 4'd15   // No operation
+  // ---------------------------------------------------------------------------
+  // ALU 操作码 alu_op_e
+  // ---------------------------------------------------------------------------
+  // 译码器根据指令的 opcode/funct3/funct7，翻译成这个枚举，送给 ALU。
+  // ALU 拿到后用 unique case 选择做哪种运算。
+  //
+  // 设计要点：
+  //   - 算术逻辑指令（ADD/SUB/SLL/.../AND）的结果写回寄存器，走 result_o
+  //   - 分支指令（EQ/NE/LT/GE/LTU/GEU）只需要"是否跳转"，走 cmp_result_o
+  //   - 比较复用了减法/大小判断逻辑，分支与 SLT 共用同一套比较器，省硬件
+  // ---------------------------------------------------------------------------
+  typedef enum logic [4:0] {
+    // --- 算术 / 逻辑 / 移位（结果写回 rd）---
+    ALU_ADD  = 5'd0,   // a + b          (add/addi/lw/sw 地址计算/jal 目标)
+    ALU_SUB  = 5'd1,   // a - b          (sub)
+    ALU_SLL  = 5'd2,   // a << b[4:0]    (sll/slli)
+    ALU_SRL  = 5'd3,   // a >> b[4:0]    (srl/srli，逻辑右移)
+    ALU_SRA  = 5'd4,   // a >>> b[4:0]   (sra/srai，算术右移，补符号位)
+    ALU_SLT  = 5'd5,   // (a<b)?1:0      有符号 (slt/slti)
+    ALU_SLTU = 5'd6,   // (a<b)?1:0      无符号 (sltu/sltiu)
+    ALU_XOR  = 5'd7,   // a ^ b          (xor/xori)
+    ALU_OR   = 5'd8,   // a | b          (or/ori)
+    ALU_AND  = 5'd9,   // a & b          (and/andi)
+    // --- 分支判定（结果送 cmp_result_o，决定是否跳转）---
+    ALU_EQ   = 5'd10,  // a == b         (beq)
+    ALU_NE   = 5'd11,  // a != b         (bne)
+    ALU_LT   = 5'd12,  // a <  b 有符号  (blt)
+    ALU_GE   = 5'd13,  // a >= b 有符号  (bge)
+    ALU_LTU  = 5'd14,  // a <  b 无符号  (bltu)
+    ALU_GEU  = 5'd15   // a >= b 无符号  (bgeu)
   } alu_op_e;
 
-  // ==========================================================================
-  // Branch Types
-  // ==========================================================================
-
+  // ---------------------------------------------------------------------------
+  // 指令格式类型 imm_type_e
+  // ---------------------------------------------------------------------------
+  // 立即数生成器根据这个枚举，选择如何从 32 位指令中拼接立即数。
+  //   IMM_I : I 型，addi/lw/...  imm[11:0] 在 inst[31:20]，符号扩展
+  //   IMM_S : S 型，sw/sb/sh     imm[11:5]在[31:25]，imm[4:0]在[11:7]
+  //   IMM_B : B 型，分支指令     imm=12位，bit0=0，散落在[31],[30:25],[11:8],[7]
+  //   IMM_U : U 型，lui/auipc    imm[31:12]在[31:12]，低12位补0（不符号扩展）
+  //   IMM_J : J 型，jal          imm=20位，bit0=0，散落在[31],[19:12],[20],[30:21]
+  // ---------------------------------------------------------------------------
   typedef enum logic [2:0] {
-    BRANCH_NONE = 3'd0,  // Not a branch
-    BRANCH_BEQ  = 3'd1,  // Branch if Equal
-    BRANCH_BNE  = 3'd2,  // Branch if Not Equal
-    BRANCH_BLT  = 3'd3,  // Branch if Less Than (signed)
-    BRANCH_BGE  = 3'd4,  // Branch if Greater or Equal (signed)
-    BRANCH_BLTU = 3'd5,  // Branch if Less Than (unsigned)
-    BRANCH_BGEU = 3'd6   // Branch if Greater or Equal (unsigned)
-  } branch_type_e;
-
-  // ==========================================================================
-  // Immediate Types
-  // ==========================================================================
-
-  typedef enum logic [2:0] {
-    IMM_NONE = 3'd0,  // No immediate
-    IMM_I    = 3'd1,  // I-type:  [31:20] sign-extended
-    IMM_S    = 3'd2,  // S-type:  [31:25],[11:7] sign-extended
-    IMM_B    = 3'd3,  // B-type:  [31],[7],[30:25],[11:8],0 sign-extended
-    IMM_U    = 3'd4,  // U-type:  [31:12],0
-    IMM_J    = 3'd5,  // J-type:  [31],[19:12],[20],[30:21],0 sign-extended
-    IMM_Z    = 3'd6   // Z-type:  [19:15] zero-extended (CSR)
+    IMM_I = 3'd0,
+    IMM_S = 3'd1,
+    IMM_B = 3'd2,
+    IMM_U = 3'd3,
+    IMM_J = 3'd4
   } imm_type_e;
 
-  // ==========================================================================
-  // Writeback Source Selection
-  // ==========================================================================
-
+  // ---------------------------------------------------------------------------
+  // 写回数据来源 wb_sel_e
+  // ---------------------------------------------------------------------------
+  // 决定写回寄存器堆 rd 的数据来自哪里。
+  //   WB_ALU : ALU 运算结果（大多数指令）
+  //   WB_MEM : 从数据存储器读出的值（lw/lb/lbu/lh/lhu）
+  //   WB_PC4 : PC + 4（jal/jalr，链接寄存器存返回地址）
+  //   WB_IMM : 立即数本身（lui，直接把 imm 写进 rd）
+  // ---------------------------------------------------------------------------
   typedef enum logic [1:0] {
-    WB_ALU   = 2'd0,  // Write ALU result
-    WB_MEM   = 2'd1,  // Write memory load data
-    WB_PC4   = 2'd2,  // Write PC+4 (JAL/JALR)
-    WB_CSR   = 2'd3   // Write CSR read data
-  } wb_src_e;
+    WB_ALU = 2'd0,
+    WB_MEM = 2'd1,
+    WB_PC4 = 2'd2,
+    WB_IMM = 2'd3
+  } wb_sel_e;
 
-  // ==========================================================================
-  // Hazard / Forwarding Types
-  // ==========================================================================
-
+  // ---------------------------------------------------------------------------
+  // 下一条 PC 来源 next_pc_e
+  // ---------------------------------------------------------------------------
+  //   PC_SEQ   : PC + 4（默认顺序执行）
+  //   PC_BRANCH : 分支目标（PC + B-imm），当分支条件成立时用
+  //   PC_JUMP  : 跳转目标（PC + J-imm），jal 用
+  //   PC_JALR  : 寄存器跳转（rs1 + I-imm），jalr 用
+  // ---------------------------------------------------------------------------
   typedef enum logic [1:0] {
-    FWD_NONE    = 2'd0,  // No forward, use register file value
-    FWD_EX_MEM  = 2'd1,  // Forward from EX/MEM register
-    FWD_MEM_WB  = 2'd2,  // Forward from MEM/WB register
-    FWD_WB      = 2'd3   // Forward from WB stage (if 5-stage)
-  } forward_sel_e;
+    PC_SEQ    = 2'd0,
+    PC_BRANCH = 2'd1,
+    PC_JUMP   = 2'd2,
+    PC_JALR   = 2'd3
+  } next_pc_e;
 
-  // ==========================================================================
-  // Memory Access Types
-  // ==========================================================================
-
-  typedef enum logic [2:0] {
-    MEM_NONE = 3'd0,  // No memory access
-    MEM_B    = 3'd1,  // Byte (8-bit)
-    MEM_H    = 3'd2,  // Halfword (16-bit)
-    MEM_W    = 3'd3,  // Word (32-bit)
-    MEM_BU   = 3'd4,  // Byte unsigned
-    MEM_HU   = 3'd5   // Halfword unsigned
+  // ---------------------------------------------------------------------------
+  // 访存大小 mem_size_e
+  // ---------------------------------------------------------------------------
+  //   SIZE_B : 1 字节  (lb/lbu/sb)
+  //   SIZE_H : 2 字节  (lh/lhu/sh)
+  //   SIZE_W : 4 字节  (lw/sw)
+  // ---------------------------------------------------------------------------
+  typedef enum logic [1:0] {
+    SIZE_B = 2'd0,
+    SIZE_H = 2'd1,
+    SIZE_W = 2'd2
   } mem_size_e;
 
-  // ==========================================================================
-  // Pipeline Control Signals Structure
-  // ==========================================================================
+  // ---------------------------------------------------------------------------
+  // 控制信号结构体 ctrl_t
+  // ---------------------------------------------------------------------------
+  // 译码器把一条指令翻译成这个结构体，送给数据通路的各个模块。
+  // 这比用零散的端口连线更清晰，也更容易扩展（加新指令只改译码器）。
+  // ---------------------------------------------------------------------------
+  typedef struct {
+    // --- 寄存器地址（直接从指令字段提取）---
+    logic [4:0]       rs1_addr;       // inst[19:15]
+    logic [4:0]       rs2_addr;       // inst[24:20]
+    logic [4:0]       rd_addr;        // inst[11:7]
 
-  typedef struct packed {
-    logic        alu_src_a;       // 0 = reg1, 1 = PC
-    logic        alu_src_b;      // 0 = reg2, 1 = immediate
-    logic        mem_read;        // Load enable
-    logic        mem_write;       // Store enable
-    logic        reg_write;       // Register file write enable
-    logic        branch;          // Conditional branch
-    logic        jump;           // Unconditional jump (JAL/JALR)
-    logic        jalr;           // JALR (indirect jump)
-    wb_src_e     wb_src;          // Writeback data source
-    alu_op_e     alu_op;          // ALU operation
-    branch_type_e branch_type;    // Branch condition type
-    mem_size_e   mem_size;        // Memory access size
-    imm_type_e   imm_type;        // Immediate format type
-    logic        m_extension;     // M-extension instruction flag
-  } ctrl_signals_t;
+    // --- ALU 控制 ---
+    alu_op_e          alu_op;         // ALU 做什么运算
+    logic             alu_op_a_sel;   // 0=rs1, 1=PC (auipc/分支/jal 地址计算)
+    logic             alu_op_b_sel;   // 0=rs2, 1=imm (I/S/U/B/J 用立即数)
 
-  // ==========================================================================
-  // Controller FSM States
-  // ==========================================================================
+    // --- 立即数 ---
+    imm_type_e        imm_type;       // 哪种立即数格式
 
-  typedef enum logic [2:0] {
-    CTRL_RESET    = 3'd0,  // Reset state
-    CTRL_FETCH    = 3'd1,  // Fetch instruction
-    CTRL_DECODE   = 3'd2,  // Decode
-    CTRL_EXECUTE  = 3'd3,  // Execute
-    CTRL_MEM      = 3'd4,  // Memory access
-    CTRL_WB       = 3'd5,  // Writeback
-    CTRL_STALL    = 3'd6,  // Pipeline stall
-    CTRL_FLUSH    = 3'd7   // Pipeline flush (branch taken)
-  } ctrl_state_e;
+    // --- 写回 ---
+    logic             reg_write;      // 1=本条指令写回 rd
+    wb_sel_e          wb_sel;         // 写回数据来源
 
-  // ==========================================================================
-  // Utility Functions
-  // ==========================================================================
+    // --- 访存 ---
+    logic             mem_read;       // 1=读存储器（load）
+    logic             mem_write;      // 1=写存储器（store）
+    mem_size_e        mem_size;       // 访问大小 B/H/W
+    logic             mem_unsigned;   // 1=无符号读（lbu/lhu）
 
-  // Sign-extend a value from a given width
-  function automatic logic [31:0] sign_extend(input logic [31:0] value, input int unsigned from_width);
-    return {{(32 - from_width){value[from_width - 1]}}, value[from_width - 1:0]};
+    // --- PC 控制 ---
+    next_pc_e         next_pc;        // 下一条 PC 来源
+    logic             branch;         // 1=条件分支（需看 ALU cmp 结果决定是否跳）
+
+    // --- 有效性 ---
+    logic             illegal;        // 1=非法指令（未识别的编码）
+  } ctrl_t;
+
+  // ---------------------------------------------------------------------------
+  // 0 值控制信号：用于初始化，所有信号归零，非法位置 1
+  // ---------------------------------------------------------------------------
+  function automatic ctrl_t ctrl_zero();
+    ctrl_t c;
+    c.rs1_addr     = 5'd0;
+    c.rs2_addr     = 5'd0;
+    c.rd_addr      = 5'd0;
+    c.alu_op       = ALU_ADD;
+    c.alu_op_a_sel = 1'b0;
+    c.alu_op_b_sel = 1'b0;
+    c.imm_type     = IMM_I;
+    c.reg_write    = 1'b0;
+    c.wb_sel       = WB_ALU;
+    c.mem_read     = 1'b0;
+    c.mem_write    = 1'b0;
+    c.mem_size     = SIZE_W;
+    c.mem_unsigned = 1'b0;
+    c.next_pc      = PC_SEQ;
+    c.branch       = 1'b0;
+    c.illegal      = 1'b1;   // 默认非法，译码器识别成功才清零
+    return c;
   endfunction
 
-  // Count leading zeros
-  function automatic logic [4:0] clz32(input logic [31:0] val);
-    logic [4:0] result;
-    result = 0;
-    for (int i = 31; i >= 0; i--) begin
-      if (val[i] == 1'b1) begin
-        result = 5'd31 - 5'(i);
-        break;
-      end
-    end
-    return result;
-  endfunction
-
-endpackage
+endpackage : rvp_pkg

@@ -408,6 +408,8 @@ module rvp_core import rvp_pkg::*; #(
   // 冒险检测单元实例化 (Hazard Unit)
   // ==========================================================================
   rvp_hazard_unit hazard_unit_inst (
+    .clk_i            (clk_i),
+    .rst_ni           (rst_ni),
     .id_rs1_addr_i    (id_ex_rs1_addr),
     .id_rs2_addr_i    (id_ex_rs2_addr),
     .id_mem_read_i    (id_ex_ctrl_signals.mem_read),
@@ -511,21 +513,16 @@ module rvp_core import rvp_pkg::*; #(
   // ==========================================================================
 
   // 中断挂起输出
-  // TODO: assign irq_pending_o = irq_software_i | irq_timer_i | irq_external_i;
+  assign irq_pending_o = irq_software_i | irq_timer_i | irq_external_i;
 
   // 崩溃转储 (暂不支持)
-  // TODO: assign crash_dump_o = 1'b0;
+  assign crash_dump_o = 1'b0;
 
   // 性能计数输出
-  // TODO: assign perf_jump_o    = ctrl_perf_jump;
-  // TODO: assign perf_tbranch_o = ctrl_perf_tbranch;
+  assign perf_jump_o    = ctrl_perf_jump;
+  assign perf_tbranch_o = ctrl_perf_tbranch;
 
   // 内存接口stall信号 (从数据总线响应生成)
-  // TODO: assign mem_stall = data_req_o & ~data_gnt_i;
-
-  // ==========================================================================
-  // 断言 (可选)
-  // ==========================================================================
-  // TODO: 添加关键信号的断言检查
+  assign mem_stall = data_req_o & ~data_gnt_i;
 
 endmodule

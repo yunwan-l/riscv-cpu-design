@@ -1,329 +1,255 @@
-/**
- * rvp_decoder.sv - RVP Instruction Decoder
- *
- * 指令译码器，纯组合逻辑。根据32位指令生成控制信号结构体。
- * 参考ibex_decoder.sv的设计。
- *
- * 功能:
- *   - 解析指令字段 (opcode, funct3, funct7, rd, rs1, rs2)
- *   - 生成ctrl_signals_t结构体 (ALU操作、内存访问、寄存器写回等)
- *   - 提取源/目标寄存器地址
- *   - 确定立即数类型
- *   - 检测非法指令
- *
- * 支持的指令集:
- *   - RV32I全部指令 (LUI, AUIPC, JAL, JALR, 分支, 加载, 存储,
- *     算术立即数, 算术寄存器, FENCE, ECALL, EBREAK)
- *   - M扩展 (MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU) - 条件编译
- */
+// =============================================================================
+// rvp_decoder.sv — RVP 指令译码器
+// =============================================================================
+// 功能：把 32 位 RISC-V 指令翻译成 ctrl_t 控制信号结构体，送给数据通路。
+//
+// 接口：
+//   instr_i  : 32 位原始指令
+//   ctrl_o   : 译码后的控制信号（见 rvp_pkg::ctrl_t）
+//
+// 译码策略：两级 case
+//   第一级：按 opcode[6:0] 分成大类（LUI/AUIPC/JAL/.../OP-IMM/OP/...）
+//   第二级：在需要时按 funct3[14:12] / funct7[31:25] 细分具体指令
+//
+// 覆盖范围：RV32I 基础整数指令集（37 条指令）
+//   未识别的编码 → illegal=1（CPU 可据此触发异常，目前先标记不处理）
+// =============================================================================
 
-`include "rvp_config.svh"
-
-module rvp_decoder import rvp_pkg::*; #(
-    parameter bit RV32E = 1'b0   // 1=RV32E (16 regs), 0=RV32I (32 regs)
-) (
-    input  logic [31:0]       instr_i,         // 32位指令输入
-    input  logic              illegal_c_insn_i, // 压缩指令非法标志 (C扩展)
-
-    // 控制信号输出
-    output ctrl_signals_t    ctrl_signals_o,  // 控制信号结构体
-    output logic [REG_ADDR_W-1:0] rs1_addr_o,  // 源寄存器1地址
-    output logic [REG_ADDR_W-1:0] rs2_addr_o,  // 源寄存器2地址
-    output logic [REG_ADDR_W-1:0] rd_addr_o,   // 目标寄存器地址
-    output imm_type_e         imm_type_o,      // 立即数类型
-
-    // 异常/特殊指令标志
-    output logic              illegal_insn_o,  // 非法指令标志
-    output logic              ecall_insn_o,    // ECALL指令标志
-    output logic              ebreak_insn_o,   // EBREAK指令标志
-    output logic              mret_insn_o,     // MRET指令标志
-    output logic              wfi_insn_o       // WFI指令标志
+module rvp_decoder (
+  input  logic [31:0]    instr_i,
+  output rvp_pkg::ctrl_t ctrl_o
 );
 
   import rvp_pkg::*;
 
-  // ==========================================================================
   // 指令字段提取
-  // ==========================================================================
+  logic [6:0]  opcode;
+  logic [4:0]  rd, rs1, rs2;
+  logic [2:0]  funct3;
+  logic [6:0]  funct7;
+  assign opcode = instr_i[6:0];
+  assign rd     = instr_i[11:7];
+  assign rs1    = instr_i[19:15];
+  assign rs2    = instr_i[24:20];
+  assign funct3 = instr_i[14:12];
+  assign funct7 = instr_i[31:25];
 
-  logic [6:0]  opcode;    // 操作码 [6:0]
-  logic [4:0]  rd;        // 目标寄存器 [11:7]
-  logic [2:0]  funct3;    // 功能码3 [14:12]
-  logic [4:0]  rs1;       // 源寄存器1 [19:15]
-  logic [4:0]  rs2;       // 源寄存器2 [24:20]
-  logic [6:0]  funct7;    // 功能码7 [31:25]
+  // 中间变量
+  ctrl_t ctrl;
 
-  // TODO: 提取指令字段
-  // assign opcode = instr_i[6:0];
-  // assign rd     = instr_i[11:7];
-  // assign funct3 = instr_i[14:12];
-  // assign rs1    = instr_i[19:15];
-  // assign rs2    = instr_i[24:20];
-  // assign funct7 = instr_i[31:25];
-
-  // ==========================================================================
-  // 内部信号
-  // ==========================================================================
-
-  logic        illegal_insn;     // 非法指令内部信号
-  logic        illegal_reg_rv32e; // RV32E寄存器地址非法
-
-  // RV32E检查: 寄存器地址>=16为非法
-  // TODO: assign illegal_reg_rv32e = RV32E &
-  //          ((rs1 >= 16) | (rs2 >= 16) | (rd >= 16));
-
-  // ==========================================================================
-  // 寄存器地址输出
-  // ==========================================================================
-
-  // TODO: assign rs1_addr_o = rs1;
-  // TODO: assign rs2_addr_o = rs2;
-  // TODO: assign rd_addr_o  = rd;
-
-  // ==========================================================================
-  // 译码主逻辑
-  // ==========================================================================
   always_comb begin
-    // 默认值: 所有控制信号清零
-    ctrl_signals_o = '{
-      alu_src_a:    1'b0,
-      alu_src_b:    1'b0,
-      mem_read:     1'b0,
-      mem_write:    1'b0,
-      reg_write:    1'b0,
-      branch:       1'b0,
-      jump:         1'b0,
-      jalr:         1'b0,
-      wb_src:       WB_ALU,
-      alu_op:       ALU_NOP,
-      branch_type:  BRANCH_NONE,
-      mem_size:     MEM_NONE,
-      imm_type:     IMM_NONE,
-      m_extension:  1'b0
-    };
+    // 初始化为全零且非法
+    ctrl = ctrl_zero();
 
-    illegal_insn   = 1'b0;
-    ecall_insn_o   = 1'b0;
-    ebreak_insn_o  = 1'b0;
-    mret_insn_o    = 1'b0;
-    wfi_insn_o     = 1'b0;
-    imm_type_o     = IMM_NONE;
+    // 填入寄存器地址（所有指令都用同样位置，先统一填）
+    ctrl.rs1_addr = rs1;
+    ctrl.rs2_addr = rs2;
+    ctrl.rd_addr  = rd;
 
-    // TODO: 根据opcode进行译码
-    // unique case (opcode)
-    //   // ============================================================
-    //   // LUI: Load Upper Immediate
-    //   // ============================================================
-    //   OPCODE_LUI: begin
-    //     ctrl_signals_o.reg_write = 1'b1;
-    //     ctrl_signals_o.alu_op    = ALU_LUI;
-    //     ctrl_signals_o.alu_src_b = 1'b1;  // 使用立即数
-    //     ctrl_signals_o.wb_src    = WB_ALU;
-    //     imm_type_o               = IMM_U;
-    //   end
-    //
-    //   // ============================================================
-    //   // AUIPC: Add Upper Immediate to PC
-    //   // ============================================================
-    //   OPCODE_AUIPC: begin
-    //     ctrl_signals_o.reg_write = 1'b1;
-    //     ctrl_signals_o.alu_op    = ALU_ADD;
-    //     ctrl_signals_o.alu_src_a = 1'b1;  // 使用PC
-    //     ctrl_signals_o.alu_src_b = 1'b1;  // 使用立即数
-    //     ctrl_signals_o.wb_src    = WB_ALU;
-    //     imm_type_o               = IMM_U;
-    //   end
-    //
-    //   // ============================================================
-    //   // JAL: Jump and Link
-    //   // ============================================================
-    //   OPCODE_JAL: begin
-    //     ctrl_signals_o.reg_write = 1'b1;
-    //     ctrl_signals_o.jump       = 1'b1;
-    //     ctrl_signals_o.wb_src    = WB_PC4;
-    //     imm_type_o               = IMM_J;
-    //   end
-    //
-    //   // ============================================================
-    //   // JALR: Jump and Link Register
-    //   // ============================================================
-    //   OPCODE_JALR: begin
-    //     ctrl_signals_o.reg_write = 1'b1;
-    //     ctrl_signals_o.jump       = 1'b1;
-    //     ctrl_signals_o.jalr       = 1'b1;
-    //     ctrl_signals_o.wb_src    = WB_PC4;
-    //     imm_type_o               = IMM_I;
-    //   end
-    //
-    //   // ============================================================
-    //   // BRANCH: 条件分支
-    //   // ============================================================
-    //   OPCODE_BRANCH: begin
-    //     ctrl_signals_o.branch = 1'b1;
-    //     imm_type_o           = IMM_B;
-    //     // TODO: 根据funct3设置branch_type
-    //     // case (funct3)
-    //     //   3'b000: ctrl_signals_o.branch_type = BRANCH_BEQ;
-    //     //   3'b001: ctrl_signals_o.branch_type = BRANCH_BNE;
-    //     //   3'b100: ctrl_signals_o.branch_type = BRANCH_BLT;
-    //     //   3'b101: ctrl_signals_o.branch_type = BRANCH_BGE;
-    //     //   3'b110: ctrl_signals_o.branch_type = BRANCH_BLTU;
-    //     //   3'b111: ctrl_signals_o.branch_type = BRANCH_BGEU;
-    //     //   default: illegal_insn = 1'b1;
-    //     // endcase
-    //   end
-    //
-    //   // ============================================================
-    //   // LOAD: 加载指令
-    //   // ============================================================
-    //   OPCODE_LOAD: begin
-    //     ctrl_signals_o.reg_write = 1'b1;
-    //     ctrl_signals_o.mem_read  = 1'b1;
-    //     ctrl_signals_o.alu_op   = ALU_ADD;
-    //     ctrl_signals_o.alu_src_b = 1'b1;
-    //     ctrl_signals_o.wb_src   = WB_MEM;
-    //     imm_type_o               = IMM_I;
-    //     // TODO: 根据funct3设置mem_size
-    //     // case (funct3)
-    //     //   3'b000: ctrl_signals_o.mem_size = MEM_B;
-    //     //   3'b001: ctrl_signals_o.mem_size = MEM_H;
-    //     //   3'b010: ctrl_signals_o.mem_size = MEM_W;
-    //     //   3'b100: ctrl_signals_o.mem_size = MEM_BU;
-    //     //   3'b101: ctrl_signals_o.mem_size = MEM_HU;
-    //     //   default: illegal_insn = 1'b1;
-    //     // endcase
-    //   end
-    //
-    //   // ============================================================
-    //   // STORE: 存储指令
-    //   // ============================================================
-    //   OPCODE_STORE: begin
-    //     ctrl_signals_o.mem_write = 1'b1;
-    //     ctrl_signals_o.alu_op   = ALU_ADD;
-    //     ctrl_signals_o.alu_src_b = 1'b1;
-    //     imm_type_o               = IMM_S;
-    //     // TODO: 根据funct3设置mem_size
-    //     // case (funct3)
-    //     //   3'b000: ctrl_signals_o.mem_size = MEM_B;
-    //     //   3'b001: ctrl_signals_o.mem_size = MEM_H;
-    //     //   3'b010: ctrl_signals_o.mem_size = MEM_W;
-    //     //   default: illegal_insn = 1'b1;
-    //     // endcase
-    //   end
-    //
-    //   // ============================================================
-    //   // OP-IMM: 算术立即数指令
-    //   // ============================================================
-    //   OPCODE_OP_IMM: begin
-    //     ctrl_signals_o.reg_write = 1'b1;
-    //     ctrl_signals_o.alu_src_b = 1'b1;
-    //     imm_type_o               = IMM_I;
-    //     // TODO: 根据funct3设置alu_op
-    //     // case (funct3)
-    //     //   3'b000: ctrl_signals_o.alu_op = ALU_ADD;   // ADDI
-    //     //   3'b010: ctrl_signals_o.alu_op = ALU_SLT;  // SLTI
-    //     //   3'b011: ctrl_signals_o.alu_op = ALU_SLTU; // SLTIU
-    //     //   3'b100: ctrl_signals_o.alu_op = ALU_XOR;   // XORI
-    //     //   3'b110: ctrl_signals_o.alu_op = ALU_OR;    // ORI
-    //     //   3'b111: ctrl_signals_o.alu_op = ALU_AND;   // ANDI
-    //     //   3'b001: ctrl_signals_o.alu_op = ALU_SLL;   // SLLI
-    //     //   3'b101: begin
-    //     //     if (funct7[5]) ctrl_signals_o.alu_op = ALU_SRA; // SRAI
-    //     //     else           ctrl_signals_o.alu_op = ALU_SRL; // SRLI
-    //     //   end
-    //     //   default: illegal_insn = 1'b1;
-    //     // endcase
-    //   end
-    //
-    //   // ============================================================
-    //   // OP: 算术寄存器指令
-    //   // ============================================================
-    //   OPCODE_OP: begin
-    //     ctrl_signals_o.reg_write = 1'b1;
-    //     // TODO: 根据funct3/funct7设置alu_op
-    //     // case (funct3)
-    //     //   3'b000: begin
-    //     //     if (funct7[5]) ctrl_signals_o.alu_op = ALU_SUB; // SUB
-    //     //     else           ctrl_signals_o.alu_op = ALU_ADD; // ADD
-    //     //   end
-    //     //   3'b001: ctrl_signals_o.alu_op = ALU_SLL;  // SLL
-    //     //   3'b010: ctrl_signals_o.alu_op = ALU_SLT;  // SLT
-    //     //   3'b011: ctrl_signals_o.alu_op = ALU_SLTU; // SLTU
-    //     //   3'b100: ctrl_signals_o.alu_op = ALU_XOR;  // XOR
-    //     //   3'b101: begin
-    //     //     if (funct7[5]) ctrl_signals_o.alu_op = ALU_SRA; // SRA
-    //     //     else           ctrl_signals_o.alu_op = ALU_SRL; // SRL
-    //     //   end
-    //     //   3'b110: ctrl_signals_o.alu_op = ALU_OR;   // OR
-    //     //   3'b111: ctrl_signals_o.alu_op = ALU_AND;  // AND
-    //     //   default: illegal_insn = 1'b1;
-    //     // endcase
-    //
-    //     // M扩展条件编译
-    // `ifdef RVP_RV32M
-    //     // TODO: M扩展指令译码
-    //     // if (funct7 == 7'b0000001) begin
-    //     //   ctrl_signals_o.m_extension = 1'b1;
-    //     //   case (funct3)
-    //     //     3'b000: ctrl_signals_o.alu_op = ALU_MUL;   // MUL
-    //     //     3'b001: ctrl_signals_o.alu_op = ALU_MULH;  // MULH
-    //     //     3'b010: ctrl_signals_o.alu_op = ALU_MULH;  // MULHSU
-    //     //     3'b011: ctrl_signals_o.alu_op = ALU_MULH;  // MULHU
-    //     //     3'b100: ctrl_signals_o.alu_op = ALU_DIV;   // DIV
-    //     //     3'b101: ctrl_signals_o.alu_op = ALU_DIV;   // DIVU
-    //     //     3'b110: ctrl_signals_o.alu_op = ALU_REM;   // REM
-    //     //     3'b111: ctrl_signals_o.alu_op = ALU_REM;   // REMU
-    //     //     default: illegal_insn = 1'b1;
-    //     //   endcase
-    //     // end
-    // `endif
-    //   end
-    //
-    //   // ============================================================
-    //   // MISC-MEM: FENCE (作为NOP处理)
-    //   // ============================================================
-    //   OPCODE_MISC: begin
-    //     // FENCE作为NOP处理
-    //     ctrl_signals_o.alu_op = ALU_NOP;
-    //   end
-    //
-    //   // ============================================================
-    //   // SYSTEM: ECALL, EBREAK, MRET, WFI, CSR
-    //   // ============================================================
-    //   OPCODE_SYSTEM: begin
-    //     // TODO: 根据funct3和instr[31:20]解析系统指令
-    //     // case (funct3)
-    //     //   3'b000: begin
-    //     //     case (instr_i[31:20])
-    //     //       20'h000: ecall_insn_o  = 1'b1;  // ECALL
-    //     //       20'h001: ebreak_insn_o = 1'b1;  // EBREAK
-    //     //       20'h302: mret_insn_o   = 1'b1;  // MRET
-    //     //       20'h105: wfi_insn_o    = 1'b1;  // WFI
-    //     //       default: illegal_insn  = 1'b1;
-    //     //     endcase
-    //     //   end
-    //     //   default: begin
-    //     //     // CSR指令处理
-    //     //     // TODO: 解析CSRRW, CSRRS, CSRRC等
-    //     //     illegal_insn = 1'b1;
-    //     //   end
-    //     // endcase
-    //   end
-    //
-    //   default: begin
-    //     illegal_insn = 1'b1;
-    //   end
-    // endcase
+    // -----------------------------------------------------------------------
+    // 主译码：按 opcode 分大类
+    // -----------------------------------------------------------------------
+    unique case (opcode)
 
-    // 合并非法指令标志
-    // TODO: illegal_insn = illegal_insn | illegal_c_insn_i | illegal_reg_rv32e;
+      // =====================================================================
+      // LUI: U 型，把 imm[31:12] 写入 rd，不经过 ALU
+      // =====================================================================
+      7'b0110111: begin
+        ctrl.imm_type  = IMM_U;
+        ctrl.reg_write = 1'b1;
+        ctrl.wb_sel    = WB_IMM;
+        ctrl.illegal   = 1'b0;
+      end
+
+      // =====================================================================
+      // AUIPC: U 型，rd = PC + imm[31:12]，ALU 算 PC+imm
+      // =====================================================================
+      7'b0010111: begin
+        ctrl.imm_type     = IMM_U;
+        ctrl.alu_op       = ALU_ADD;
+        ctrl.alu_op_a_sel = 1'b1;   // operand A = PC
+        ctrl.alu_op_b_sel = 1'b1;   // operand B = imm
+        ctrl.reg_write    = 1'b1;
+        ctrl.wb_sel       = WB_ALU;
+        ctrl.illegal      = 1'b0;
+      end
+
+      // =====================================================================
+      // JAL: J 型，rd = PC+4，PC = PC + J-imm
+      // =====================================================================
+      7'b1101111: begin
+        ctrl.imm_type  = IMM_J;
+        ctrl.reg_write = 1'b1;
+        ctrl.wb_sel    = WB_PC4;
+        ctrl.next_pc   = PC_JUMP;
+        ctrl.illegal   = 1'b0;
+      end
+
+      // =====================================================================
+      // JALR: I 型，rd = PC+4，PC = rs1 + I-imm（末位清零）
+      // =====================================================================
+      7'b1100111: begin
+        ctrl.imm_type     = IMM_I;
+        ctrl.alu_op       = ALU_ADD;
+        ctrl.alu_op_b_sel = 1'b1;   // operand B = imm（地址计算用，但跳转逻辑单独处理）
+        ctrl.reg_write    = 1'b1;
+        ctrl.wb_sel       = WB_PC4;
+        ctrl.next_pc      = PC_JALR;
+        ctrl.illegal      = 1'b0;
+      end
+
+      // =====================================================================
+      // BRANCH: B 型，条件成立则 PC = PC + B-imm
+      // funct3 决定比较方式
+      // =====================================================================
+      7'b1100011: begin
+        ctrl.imm_type = IMM_B;
+        ctrl.branch   = 1'b1;
+        ctrl.next_pc  = PC_BRANCH;
+        ctrl.illegal  = 1'b0;
+        unique case (funct3)
+          3'b000:  ctrl.alu_op = ALU_EQ;   // beq
+          3'b001:  ctrl.alu_op = ALU_NE;   // bne
+          3'b100:  ctrl.alu_op = ALU_LT;   // blt
+          3'b101:  ctrl.alu_op = ALU_GE;   // bge
+          3'b110:  ctrl.alu_op = ALU_LTU;  // bltu
+          3'b111:  ctrl.alu_op = ALU_GEU;  // bgeu
+          default: ctrl.illegal = 1'b1;     // 010/011 非法
+        endcase
+      end
+
+      // =====================================================================
+      // LOAD: I 型，rd = MEM[rs1 + I-imm]，funct3 决定大小/符号
+      // =====================================================================
+      7'b0000011: begin
+        ctrl.imm_type     = IMM_I;
+        ctrl.alu_op       = ALU_ADD;       // 地址 = rs1 + imm
+        ctrl.alu_op_b_sel = 1'b1;
+        ctrl.reg_write    = 1'b1;
+        ctrl.wb_sel       = WB_MEM;
+        ctrl.mem_read     = 1'b1;
+        ctrl.illegal      = 1'b0;
+        unique case (funct3)
+          3'b000:  begin ctrl.mem_size = SIZE_B; ctrl.mem_unsigned = 1'b0; end // lb
+          3'b001:  begin ctrl.mem_size = SIZE_H; ctrl.mem_unsigned = 1'b0; end // lh
+          3'b010:  begin ctrl.mem_size = SIZE_W; ctrl.mem_unsigned = 1'b0; end // lw
+          3'b100:  begin ctrl.mem_size = SIZE_B; ctrl.mem_unsigned = 1'b1; end // lbu
+          3'b101:  begin ctrl.mem_size = SIZE_H; ctrl.mem_unsigned = 1'b1; end // lhu
+          default: ctrl.illegal = 1'b1;     // 011/110/111 非法
+        endcase
+      end
+
+      // =====================================================================
+      // STORE: S 型，MEM[rs1 + S-imm] = rs2，funct3 决定大小
+      // =====================================================================
+      7'b0100011: begin
+        ctrl.imm_type     = IMM_S;
+        ctrl.alu_op       = ALU_ADD;       // 地址 = rs1 + imm
+        ctrl.alu_op_b_sel = 1'b1;
+        ctrl.mem_write    = 1'b1;
+        ctrl.illegal      = 1'b0;
+        unique case (funct3)
+          3'b000:  ctrl.mem_size = SIZE_B;  // sb
+          3'b001:  ctrl.mem_size = SIZE_H;  // sh
+          3'b010:  ctrl.mem_size = SIZE_W;  // sw
+          default: ctrl.illegal = 1'b1;
+        endcase
+      end
+
+      // =====================================================================
+      // OP-IMM: I 型，rd = rs1 OP imm，funct3 决定运算
+      // 注意 slli/srli/srai 的 imm 只有低 5 位有效，funct7[30] 区分 srl/sra
+      // =====================================================================
+      7'b0010011: begin
+        ctrl.imm_type     = IMM_I;
+        ctrl.alu_op_b_sel = 1'b1;          // operand B = imm
+        ctrl.reg_write    = 1'b1;
+        ctrl.wb_sel       = WB_ALU;
+        ctrl.illegal      = 1'b0;
+        unique case (funct3)
+          3'b000:  ctrl.alu_op = ALU_ADD;   // addi
+          3'b010:  ctrl.alu_op = ALU_SLT;   // slti
+          3'b011:  ctrl.alu_op = ALU_SLTU;  // sltiu
+          3'b100:  ctrl.alu_op = ALU_XOR;   // xori
+          3'b110:  ctrl.alu_op = ALU_OR;    // ori
+          3'b111:  ctrl.alu_op = ALU_AND;   // andi
+          3'b001:  begin                    // slli
+            if (funct7[6:0] == 7'b0000000) ctrl.alu_op = ALU_SLL;
+            else                            ctrl.illegal = 1'b1;
+          end
+          3'b101:  begin                    // srli / srai
+            if      (funct7[6:0] == 7'b0000000) ctrl.alu_op = ALU_SRL;
+            else if (funct7[6:0] == 7'b0100000) ctrl.alu_op = ALU_SRA;
+            else                                 ctrl.illegal = 1'b1;
+          end
+          default: ctrl.illegal = 1'b1;
+        endcase
+      end
+
+      // =====================================================================
+      // OP: R 型，rd = rs1 OP rs2，funct3 + funct7[30] 决定运算
+      // =====================================================================
+      7'b0110011: begin
+        ctrl.alu_op_b_sel = 1'b0;          // operand B = rs2
+        ctrl.reg_write    = 1'b1;
+        ctrl.wb_sel       = WB_ALU;
+        ctrl.illegal      = 1'b0;
+        unique case (funct3)
+          3'b000:  begin
+            if      (funct7[5] == 1'b0) ctrl.alu_op = ALU_ADD;  // add
+            else if (funct7[5] == 1'b1) ctrl.alu_op = ALU_SUB;  // sub
+            else                         ctrl.illegal = 1'b1;
+          end
+          3'b001:  begin
+            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLL;       // sll
+            else                    ctrl.illegal = 1'b1;
+          end
+          3'b010:  begin
+            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLT;       // slt
+            else                    ctrl.illegal = 1'b1;
+          end
+          3'b011:  begin
+            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLTU;      // sltu
+            else                    ctrl.illegal = 1'b1;
+          end
+          3'b100:  begin
+            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_XOR;       // xor
+            else                    ctrl.illegal = 1'b1;
+          end
+          3'b101:  begin
+            if      (funct7[5] == 1'b0) ctrl.alu_op = ALU_SRL;  // srl
+            else if (funct7[5] == 1'b1) ctrl.alu_op = ALU_SRA;  // sra
+            else                         ctrl.illegal = 1'b1;
+          end
+          3'b110:  begin
+            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_OR;        // or
+            else                    ctrl.illegal = 1'b1;
+          end
+          3'b111:  begin
+            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_AND;       // and
+            else                    ctrl.illegal = 1'b1;
+          end
+          default: ctrl.illegal = 1'b1;
+        endcase
+      end
+
+      // =====================================================================
+      // SYSTEM: I 型，ecall/ebreak/csr*（当前阶段标记为非法，后续扩展）
+      // =====================================================================
+      7'b1110011: begin
+        ctrl.illegal = 1'b1;   // 暂不处理，标记非法
+      end
+
+      // =====================================================================
+      // 未识别的 opcode
+      // =====================================================================
+      default: begin
+        ctrl.illegal = 1'b1;
+      end
+
+    endcase
+
+    ctrl_o = ctrl;
   end
 
-  // ==========================================================================
-  // 输出赋值
-  // ==========================================================================
-
-  // TODO: assign illegal_insn_o = illegal_insn;
-  // TODO: ctrl_signals_o.imm_type已包含在结构体中
-
-endmodule
+endmodule : rvp_decoder

@@ -1,184 +1,102 @@
-/**
- * rvp_alu.sv - RVP Arithmetic Logic Unit
- *
- * 完整的ALU实现框架，支持RV32I全部操作以及M扩展（条件编译）。
- * 参考ibex_alu.sv的加法器/比较器/移位器设计。
- *
- * 支持的操作:
- *   - 算术: ADD, SUB
- *   - 逻辑: XOR, OR, AND
- *   - 移位: SLL, SRL, SRA
- *   - 比较: SLT, SLTU
- *   - 传递: LUI (直通立即数)
- *   - M扩展: MUL, MULH, DIV, REM (条件编译)
- *
- * 设计要点:
- *   - 使用单一加法器实现加/减运算，减法通过补码加法实现
- *   - 比较器复用加法器的进位输出
- *   - 算术右移通过符号位填充实现
- *   - M扩展操作在多周期乘除法器中完成
- */
+// =============================================================================
+// rvp_alu.sv — RVP 算术逻辑单元
+// =============================================================================
+// 功能：根据 alu_op_i 对两个 32 位操作数做运算，输出结果与分支判定。
+//
+// 接口：
+//   alu_op_i      : 操作码（见 rvp_pkg::alu_op_e）
+//   operand_a_i   : 操作数 A（通常来自 rs1 或 PC）
+//   operand_b_i   : 操作数 B（通常来自 rs2 或立即数）
+//   result_o      : 算术/逻辑运算结果，写回寄存器堆
+//   cmp_result_o  : 比较结果（1=条件成立），供分支指令决定是否跳转
+//
+// 覆盖范围：RV32I 全部算术/逻辑/移位/比较 + 6 种分支判定
+// （M 扩展的乘除法在后续 rvp_multdiv 模块单独实现，不放在这里）
+// =============================================================================
 
-`include "rvp_config.svh"
-
-module rvp_alu import rvp_pkg::*; (
-    input  logic [31:0]       operand_a_i,      // ALU操作数A (通常来自rs1或PC)
-    input  logic [31:0]       operand_b_i,      // ALU操作数B (通常来自rs2或立即数)
-    input  alu_op_e          alu_op_i,         // ALU操作选择信号
-
-    // M扩展相关接口 (条件编译)
-`ifdef RVP_RV32M
-    input  logic              multdiv_ready_i,  // 乘除法器完成信号
-    input  logic [31:0]       multdiv_result_i, // 乘除法结果
-    input  logic              multdiv_sel_i,    // 选择乘除法结果
-    output logic              mult_en_o,        // 乘法使能
-    output logic              div_en_o,         // 除法使能
-`endif
-
-    output logic [31:0]       result_o,         // ALU最终结果
-    output logic              comparison_result_o, // 比较结果(用于分支)
-    output logic              is_equal_result_o    // 相等比较结果(用于分支)
+module rvp_alu (
+  input  rvp_pkg::alu_op_e  alu_op_i,
+  input  logic [31:0]       operand_a_i,
+  input  logic [31:0]       operand_b_i,
+  output logic [31:0]       result_o,
+  output logic              cmp_result_o
 );
 
   import rvp_pkg::*;
 
-  // ==========================================================================
-  // 内部信号声明
-  // ==========================================================================
+  // -------------------------------------------------------------------------
+  // 1. 加法 / 减法
+  // -------------------------------------------------------------------------
+  // 减法用补码实现：a - b = a + (~b) + 1，综合器会识别成同一个加减法器。
+  // 这里直接写 + / -，工具自动复用硬件，比手写 ~b+1 更清晰。
+  logic [31:0] add_result;
+  logic [31:0] sub_result;
+  assign add_result = operand_a_i + operand_b_i;
+  assign sub_result = operand_a_i - operand_b_i;
 
-  // 加法器相关信号
-  logic [31:0] operand_a_rev;       // 操作数A位反转(用于左移)
-  logic [32:0] operand_b_neg;       // 操作数B取反(用于减法)
-  logic        adder_op_b_negate;   // 减法控制: 1=取反B
-  logic [32:0] adder_in_a;         // 加法器输入A (33位带进位)
-  logic [32:0] adder_in_b;         // 加法器输入B (33位带进位)
-  logic [33:0] adder_result_ext;    // 加法器扩展结果(含进位)
-  logic [31:0] adder_result;        // 加法器结果(32位)
+  // -------------------------------------------------------------------------
+  // 2. 比较逻辑
+  // -------------------------------------------------------------------------
+  // 三种基础比较，分支与 SLT 共用：
+  //   is_equal          : a == b                 （BEQ/BNE 用）
+  //   is_less_signed    : $signed(a) < $signed(b)（BLT/BGE/SLT 用）
+  //   is_less_unsigned  : a < b                  （BLTU/BGEU/SLTU 用）
+  //
+  // 注意：$signed() 只改变"如何解读"这 32 位，不改位宽。综合后会用符号位
+  // 做有符号比较，这是标准写法，Vivado/ModelSim 都能正确处理。
+  logic is_equal;
+  logic is_less_signed;
+  logic is_less_unsigned;
+  assign is_equal         = (operand_a_i == operand_b_i);
+  assign is_less_signed   = ($signed(operand_a_i) < $signed(operand_b_i));
+  assign is_less_unsigned = (operand_a_i < operand_b_i);
 
-  // 移位器相关信号
-  logic [31:0] shift_operand_a;     // 移位器输入
-  logic [4:0]  shift_amt;           // 移位量
-  logic [31:0] shift_result;        // 移位结果
-  logic [31:0] shift_right_result;  // 右移结果
-  logic [31:0] shift_left_result;   // 左移结果
+  // -------------------------------------------------------------------------
+  // 3. 移位
+  // -------------------------------------------------------------------------
+  // RISC-V 规定移位量只看 rs2/imm 的低 5 位（32 位数据）。
+  //   <<  逻辑左移（低位补 0）
+  //   >>  逻辑右移（高位补 0）        —— SRL
+  //   >>> 算术右移（高位补符号位）    —— SRA，需把操作数声明为 signed
+  logic [4:0] shamt;
+  assign shamt = operand_b_i[4:0];
 
-  // 比较器相关信号
-  logic        is_equal;            // A == B
-  logic        is_less_signed;      // A < B (有符号)
-  logic        is_less_unsigned;    // A < B (无符号)
-
-  // 位反转辅助信号
-  logic [31:0] operand_b_rev;       // 操作数B位反转(用于右移转左移)
-
-  // ==========================================================================
-  // 加法器实现 (参考ibex_alu.sv)
-  // ==========================================================================
-
-  // 减法/比较时需要将操作数B取反 (补码加法)
-  // TODO: 实现adder_op_b_negate逻辑
-  //       根据alu_op_i判断是否需要取反B
-  //       SUB/SLT/SLTU/分支比较需要取反
+  // -------------------------------------------------------------------------
+  // 4. 分支判定结果 cmp_result_o
+  // -------------------------------------------------------------------------
+  // 分支指令只关心"条件成不成立"，不写回寄存器，所以走 cmp_result_o。
+  // 注意 GE/GEB 是 LT 的反：a>=b 等价于 !(a<b)，复用 is_less 即可。
   always_comb begin
-    adder_op_b_negate = 1'b0;
-    // TODO: case (alu_op_i)
-    //   ALU_SUB, ALU_SLT, ALU_SLTU: adder_op_b_negate = 1'b1;
-    //   default: adder_op_b_negate = 1'b0;
-    // endcase
+    unique case (alu_op_i)
+      ALU_EQ:  cmp_result_o = is_equal;
+      ALU_NE:  cmp_result_o = ~is_equal;
+      ALU_LT:  cmp_result_o = is_less_signed;
+      ALU_GE:  cmp_result_o = ~is_less_signed;
+      ALU_LTU: cmp_result_o = is_less_unsigned;
+      ALU_GEU: cmp_result_o = ~is_less_unsigned;
+      default: cmp_result_o = 1'b0;
+    endcase
   end
 
-  // 准备加法器输入A (扩展为33位，最低位补1用于进位链)
-  // TODO: assign adder_in_a = {operand_a_i, 1'b1};
-
-  // 准备加法器输入B (减法时取反，加法时直通)
-  // TODO: assign operand_b_neg = {operand_b_i, 1'b0} ^ {33{1'b1}};
-  //       assign adder_in_b = adder_op_b_negate ? operand_b_neg : {operand_b_i, 1'b0};
-
-  // 加法器执行
-  // TODO: assign adder_result_ext = adder_in_a + adder_in_b;
-  //       assign adder_result = adder_result_ext[32:1];
-
-  // ==========================================================================
-  // 比较器实现 (复用加法器结果)
-  // ==========================================================================
-
-  // 相等比较
-  // TODO: assign is_equal = (operand_a_i == operand_b_i);
-
-  // 有符号小于比较
-  // 利用加法器: A + (-B) 的符号位和溢出判断
-  // TODO: assign is_less_signed = (~adder_result_ext[33] ^ adder_result_ext[32]);
-
-  // 无符号小于比较
-  // TODO: assign is_less_unsigned = ~adder_result_ext[32];
-
-  // 比较结果输出
-  // TODO: assign comparison_result_o = ...;
-  // TODO: assign is_equal_result_o = is_equal;
-
-  // ==========================================================================
-  // 移位器实现
-  // ==========================================================================
-
-  // 位反转操作数A (左移转右移的技巧)
-  // TODO: 实现 operand_a_rev[k] = operand_a_i[31-k]
-  for (genvar k = 0; k < 32; k++) begin : gen_rev_operand_a
-    // TODO: assign operand_a_rev[k] = operand_a_i[31-k];
-  end
-
-  // 移位量取低5位
-  // TODO: assign shift_amt = operand_b_i[4:0];
-
-  // 右移 (逻辑右移)
-  // TODO: assign shift_right_result = operand_a_i >> shift_amt;
-
-  // 左移 (通过反转→右移→反转实现)
-  // TODO: assign shift_left_result = (operand_a_rev >> shift_amt) 反转;
-
-  // 算术右移 (符号位填充)
-  // TODO: assign shift_right_arith = $signed(operand_a_i) >>> shift_amt;
-
-  // ==========================================================================
-  // M扩展支持 (条件编译)
-  // ==========================================================================
-`ifdef RVP_RV32M
-  // M扩展使能信号
-  // TODO: assign mult_en_o = (alu_op_i == ALU_MUL) || (alu_op_i == ALU_MULH);
-  // TODO: assign div_en_o  = (alu_op_i == ALU_DIV) || (alu_op_i == ALU_REM);
-`endif
-
-  // ==========================================================================
-  // 结果多路选择
-  // ==========================================================================
+  // -------------------------------------------------------------------------
+  // 5. 主结果 result_o（多路选择）
+  // -------------------------------------------------------------------------
+  // unique case 告诉综合器：这些分支互斥，便于优化成多路选择器。
+  // 算术右移 SRA 必须用 $signed >>> 才会补符号位；若用 >> 则补 0（错）。
   always_comb begin
-    result_o = 32'b0;
-    // TODO: 根据alu_op_i选择输出结果
-    // unique case (alu_op_i)
-    //   ALU_ADD:  result_o = adder_result;
-    //   ALU_SUB:  result_o = adder_result;
-    //   ALU_XOR:  result_o = operand_a_i ^ operand_b_i;
-    //   ALU_OR:   result_o = operand_a_i | operand_b_i;
-    //   ALU_AND:  result_o = operand_a_i & operand_b_i;
-    //   ALU_SLL:  result_o = shift_left_result;
-    //   ALU_SRL:  result_o = shift_right_result;
-    //   ALU_SRA:  result_o = shift_right_arith;
-    //   ALU_SLT:  result_o = {31'b0, is_less_signed};
-    //   ALU_SLTU: result_o = {31'b0, is_less_unsigned};
-    //   ALU_LUI:  result_o = operand_b_i;  // 直通立即数
-    //   ALU_NOP:  result_o = 32'b0;
-    //   default:  result_o = 32'b0;
-    // endcase
-
-    // M扩展结果选择
-`ifdef RVP_RV32M
-    // TODO: if (multdiv_sel_i && multdiv_ready_i) begin
-    //         result_o = multdiv_result_i;
-    //       end
-`endif
+    unique case (alu_op_i)
+      ALU_ADD:  result_o = add_result;
+      ALU_SUB:  result_o = sub_result;
+      ALU_SLL:  result_o = operand_a_i << shamt;
+      ALU_SRL:  result_o = operand_a_i >> shamt;
+      ALU_SRA:  result_o = $signed(operand_a_i) >>> shamt;
+      ALU_SLT:  result_o = {31'b0, is_less_signed};
+      ALU_SLTU: result_o = {31'b0, is_less_unsigned};
+      ALU_XOR:  result_o = operand_a_i ^ operand_b_i;
+      ALU_OR:   result_o = operand_a_i | operand_b_i;
+      ALU_AND:  result_o = operand_a_i & operand_b_i;
+      default:  result_o = 32'b0;   // 分支指令的 result 不用，置 0
+    endcase
   end
 
-  // ==========================================================================
-  // 断言 (可选)
-  // ==========================================================================
-  // TODO: 添加断言检查操作码合法性
-
-endmodule
+endmodule : rvp_alu

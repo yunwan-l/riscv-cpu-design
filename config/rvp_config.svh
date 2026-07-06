@@ -52,10 +52,9 @@
 // Hazard Handling
 // ============================================================================
 
-// Forwarding unit: 0 = stall-only (Phase 1), 1 = enable forwarding (Phase 3)
-`ifndef RVP_FORWARDING
-  `define RVP_FORWARDING 0
-`endif
+// Forwarding unit: define only when enabling (Phase 3)
+// `define RVP_FORWARDING 1   // Uncomment for Phase 3 with forwarding
+// When not defined, hazard unit uses stall-only mode
 
 // Branch prediction: 0 = none (flush on branch), 1 = predict-not-taken
 // 2 = 2-bit saturating counter, 3 = BTB-based

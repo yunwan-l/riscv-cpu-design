@@ -57,12 +57,9 @@ PICORV32_TESTS := $(CURDIR)/../../document/references/picorv32/tests
 # Use picorv32 firmware linker script or a custom one
 LINK_SCRIPT   ?= $(TESTS_DIR)/link.ld
 
-# --- Memory configuration ---
-MEM_SIZE     ?= 8192    # 8K words = 32KB
+# --- Hex format ---
+# Hex conversion uses objcopy -O verilog directly (see pattern rules below).
 HEX_FORMAT   ?= verilog  # verilog | binary
-
-# --- makehex script (for binary -> hex conversion) ---
-MAKEHEX      := $(TESTS_DIR)/makehex.py
 
 # =============================================================================
 # Test source files
@@ -254,7 +251,7 @@ help:
 	@echo "Variables:"
 	@echo "  ARCH         Target architecture (default: $(ARCH))"
 	@echo "  RISCV_PREFIX Toolchain prefix (default: $(RISCV_PREFIX))"
-	@echo "  MEM_SIZE     Memory size in words (default: $(MEM_SIZE))"
+	@echo "  HEX_FORMAT   Output format: verilog|binary (default: $(HEX_FORMAT))"
 	@echo ""
 	@echo "Output:"
 	@echo "  build/*.hex        - Verilog hex files (for $readmemh)"
