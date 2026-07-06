@@ -1,0 +1,6 @@
+# 临时文件
+~$*.docx
+~$*.doc
+
+# 提取中间文件
+document/nexys 4 ddr/extracted/
