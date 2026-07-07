@@ -14,3 +14,15 @@ work/
 *.vcd
 *.wlf
 transcript
+
+# ModelSim 仿真产物
+tb/work/
+tb/vsim.wlf
+tb/transcript
+tb/wlft*
+
+# TRAE 工具临时目录
+.trae-html-share-packages/
+
+# Vivado 综合产物
+synth/vivado/*.zip
