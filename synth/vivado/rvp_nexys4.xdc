@@ -7,7 +7,7 @@
 ## Pin assignments:
 ##   - Clock:       100 MHz on pin E3
 ##   - Reset:       CPU reset button on pin C12 (CPU_RESETN, active-low)
-##   - UART:        USB-UART TX=B18, RX=B19
+##   - UART:        USB-UART TX=D4 (UART_RXD_OUT)
 ##   - GPIO LEDs:   16 user LEDs
 ##   - GPIO Switch: 16 slide switches
 ##   - 7-segment:   8-digit seven-segment display
@@ -16,11 +16,19 @@
 ## =============================================================================
 
 ## ---------------------------------------------------------------------------
-## Clock signal - 100 MHz crystal oscillator
-## Period = 10.000 ns (100 MHz)
+## Clock signal - 100 MHz crystal oscillator on pin E3
+## 板载晶振 100MHz，通过 T 触发器二分频得到 50MHz 给 SoC
 ## ---------------------------------------------------------------------------
 set_property -dict { PACKAGE_PIN E3    IOSTANDARD LVCMOS33 } [get_ports { clk }];
 create_clock -add -name sys_clk_pin -period 10.000 -waveform {0 5} [get_ports { clk }];
+
+## 分频时钟约束：clk_div2 = clk / 2 = 50MHz (20ns period)
+## 用通配符匹配寄存器路径，避免层次名不匹配
+create_generated_clock -name clk_div2 -source [get_ports { clk }] -divide_by 2 [get_pins -hier -filter {NAME =~ *clk_div2_reg/Q}]
+
+## 跨时钟域约束：SoC(50MHz) → 数码管(100MHz)，pc_dbg 是慢变信号，设 false path
+set_false_path -from [get_clocks clk_div2] -to [get_clocks sys_clk_pin]
+set_false_path -from [get_clocks sys_clk_pin] -to [get_clocks clk_div2]
 
 ## ---------------------------------------------------------------------------
 ## Reset - CPU reset button (active-low on the board)
@@ -39,11 +47,12 @@ set_property -dict { PACKAGE_PIN N17   IOSTANDARD LVCMOS33 } [get_ports { btn_ce
 #set_property -dict { PACKAGE_PIN P18   IOSTANDARD LVCMOS33 } [get_ports { btn_down   }];
 
 ## ---------------------------------------------------------------------------
-## UART - USB-UART bridge
-## TX = B18 (transmit from FPGA), RX = B19 (receive into FPGA)
+## UART - USB-UART bridge (FTDI FT2232HQ)
+## FPGA TX = D4 (UART_RXD_OUT on Nexys4 DDR schematic)
+## FPGA RX = C4 (UART_TXD_IN) — 当前 SoC 无 RX 功能，暂不约束
+## 参考: Digilent Nexys-4-DDR-Master.xdc
 ## ---------------------------------------------------------------------------
-set_property -dict { PACKAGE_PIN B18   IOSTANDARD LVCMOS33 } [get_ports { uart_tx }];
-set_property -dict { PACKAGE_PIN B19   IOSTANDARD LVCMOS33 } [get_ports { uart_rx }];
+set_property -dict { PACKAGE_PIN D4    IOSTANDARD LVCMOS33 } [get_ports { uart_tx }];
 
 ## ---------------------------------------------------------------------------
 ## GPIO LEDs - 16 discrete LEDs
@@ -113,7 +122,7 @@ set_property -dict { PACKAGE_PIN U13   IOSTANDARD LVCMOS33 } [get_ports { an[7] 
 ## ---------------------------------------------------------------------------
 ## Enable the configuration voltage select bit (required for Artix-7)
 set_property CONFIG_VOLTAGE 3.3 [current_design]
-set_property CFGBVS GND          [current_design]
+set_property CFGBVS VCCO         [current_design]
 
 ## Bitstream configuration
 set_property BITSTREAM.GENERAL.COMPRESS      TRUE [current_design]
@@ -126,7 +135,7 @@ set_property BITSTREAM.CONFIG.CONFIGRATE    50    [current_design]
 set_false_path -from [get_ports { rst_n }] -to [all_registers]
 
 ## Slow down the I/O timing for buttons/switches (async inputs)
-set_input_delay  -clock sys_clk_pin -max  5.0 [get_ports { sw[*] btn_center uart_rx }]
-set_input_delay  -clock sys_clk_pin -min  1.0 [get_ports { sw[*] btn_center uart_rx }]
+set_input_delay  -clock sys_clk_pin -max  5.0 [get_ports { sw[*] btn_center }]
+set_input_delay  -clock sys_clk_pin -min  1.0 [get_ports { sw[*] btn_center }]
 set_output_delay -clock sys_clk_pin -max  5.0 [get_ports { led[*] uart_tx seg_* an[*] }]
 set_output_delay -clock sys_clk_pin -min  1.0 [get_ports { led[*] uart_tx seg_* an[*] }]

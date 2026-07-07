@@ -17,7 +17,7 @@
 //   addr_i[3:0]   : 寄存器偏移（字节地址，只用低 4 位）
 //   read_i        : 读使能
 //   write_i       : 写使能
-//   wdata_i       : 写数据（只取低 8 位）
+//   wdata_i[7:0]  : 写数据（只取低 8 位）
 //   rdata_o       : 读返回数据
 //   tx_o          : 串口 TX 输出引脚（接 FPGA 的 TX 引脚）
 // =============================================================================
@@ -29,11 +29,11 @@ module rvp_uart #(
   input  logic        clk_i,
   input  logic        rst_ni,
 
-  // 总线接口
-  input  logic [31:0] addr_i,
+  // 总线接口（端口宽度与实际使用一致，避免综合 unconnected port warning）
+  input  logic [3:0]  addr_i,
   input  logic        read_i,
   input  logic        write_i,
-  input  logic [31:0] wdata_i,
+  input  logic [7:0]  wdata_i,
   output logic [31:0] rdata_o,
 
   // 物理引脚
@@ -69,8 +69,8 @@ module rvp_uart #(
       tx_busy  <= 1'b0;
     end else begin
       // 写 TXDATA 启动发送（仅在空闲时接受）
-      if (write_i && addr_i[3:0] == 4'h0 && !tx_busy) begin
-        tx_shift <= wdata_i[7:0];
+      if (write_i && addr_i == 4'h0 && !tx_busy) begin
+        tx_shift <= wdata_i;
         tx_busy  <= 1'b1;
         state    <= START;
         clk_div  <= 0;
@@ -139,7 +139,7 @@ module rvp_uart #(
   always_comb begin
     rdata_o = 32'b0;
     if (read_i) begin
-      unique case (addr_i[3:0])
+      unique case (addr_i)
         4'h4:    rdata_o = {31'b0, tx_busy};  // TXSTAT
         default: rdata_o = 32'b0;
       endcase

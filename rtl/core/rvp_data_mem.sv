@@ -5,7 +5,7 @@
 //
 // 接口：
 //   clk_i        : 时钟（写操作在时钟沿）
-//   addr_i       : 字节地址（来自 ALU 计算的 rs1+imm）
+//   addr_i       : 字节地址（宽度由 ADDR_BITS+2 决定，与 DEPTH 匹配）
 //   write_data_i : 要写入的数据（来自 rs2）
 //   mem_read_i   : 读使能
 //   mem_write_i  : 写使能
@@ -18,14 +18,20 @@
 //   2. 字节寻址：用 addr[1:0] 决定访问字内的哪个字节/半字
 //   3. 子字访问的读：先从字里取出需要的字节/半字，再按 unsigned 做符号/零扩展
 //   4. 子字访问的写：只写对应字节，其它字节保持不变（用 byte enable）
-//   5. 容量：16K 字 = 64KB（仿真够用，FPGA 上用 BRAM）
+//   5. 容量：2K 字 = 8KB（FPGA 综合用，仿真可覆盖）
+//
+// 端口宽度说明：
+//   addr_i 宽度 = ADDR_BITS + 2（字索引 ADDR_BITS 位 + 字内偏移 2 位）
+//   DEPTH=2048 → ADDR_BITS=11 → addr_i 为 13 位
+//   端口宽度与实际使用完全一致，避免综合 unconnected port warning
 // =============================================================================
 
 module rvp_data_mem #(
-  parameter int DEPTH = 16384  // 16K 字 = 64KB
+  parameter int DEPTH = 2048,           // 2K 字 = 8KB
+  parameter int ADDR_BITS = $clog2(DEPTH)  // 字地址位宽（自动计算）
 ) (
   input  logic                    clk_i,
-  input  logic [31:0]             addr_i,
+  input  logic [ADDR_BITS+1:0]    addr_i,         // 字节地址（宽度与 DEPTH 匹配）
   input  logic [31:0]             write_data_i,
   input  logic                    mem_read_i,
   input  logic                    mem_write_i,
@@ -40,9 +46,9 @@ module rvp_data_mem #(
   logic [31:0] mem [0:DEPTH-1];
 
   // 字索引和字内偏移
-  logic [31:2] word_addr;
-  logic [1:0]  byte_offset;
-  assign word_addr   = addr_i[31:2];
+  logic [ADDR_BITS-1:0] word_addr;
+  logic [1:0]           byte_offset;
+  assign word_addr   = addr_i[ADDR_BITS+1:2];
   assign byte_offset = addr_i[1:0];
 
   // 读出的原始字

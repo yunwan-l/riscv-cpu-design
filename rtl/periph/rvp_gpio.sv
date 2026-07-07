@@ -8,14 +8,14 @@
 //   偏移 0x04: INPUT  (R)   — 读取外部输入（开关/按键）的当前值
 //
 // 接口：
-//   clk_i, rst_ni : 时钟和复位
-//   addr_i[3:0]   : 寄存器偏移
-//   read_i        : 读使能
-//   write_i       : 写使能
-//   wdata_i       : 写数据
-//   rdata_o       : 读返回数据
-//   led_o         : LED 输出引脚（宽度可参数化）
-//   sw_i          : 开关输入引脚
+//   clk_i, rst_ni    : 时钟和复位
+//   addr_i[3:0]      : 寄存器偏移
+//   read_i           : 读使能
+//   write_i          : 写使能
+//   wdata_i[WIDTH-1:0]: 写数据（宽度与引脚一致）
+//   rdata_o          : 读返回数据
+//   led_o            : LED 输出引脚（宽度可参数化）
+//   sw_i             : 开关输入引脚
 // =============================================================================
 
 module rvp_gpio #(
@@ -24,11 +24,11 @@ module rvp_gpio #(
   input  logic             clk_i,
   input  logic             rst_ni,
 
-  // 总线接口
-  input  logic [31:0]      addr_i,
+  // 总线接口（端口宽度与实际使用一致，避免综合 unconnected port warning）
+  input  logic [3:0]       addr_i,
   input  logic             read_i,
   input  logic             write_i,
-  input  logic [31:0]      wdata_i,
+  input  logic [WIDTH-1:0] wdata_i,
   output logic [31:0]      rdata_o,
 
   // 物理引脚
@@ -42,8 +42,8 @@ module rvp_gpio #(
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       output_reg <= '0;
-    end else if (write_i && addr_i[3:0] == 4'h0) begin
-      output_reg <= wdata_i[WIDTH-1:0];
+    end else if (write_i && addr_i == 4'h0) begin
+      output_reg <= wdata_i;
     end
   end
 
@@ -54,7 +54,7 @@ module rvp_gpio #(
   always_comb begin
     rdata_o = 32'b0;
     if (read_i) begin
-      unique case (addr_i[3:0])
+      unique case (addr_i)
         4'h0:    rdata_o = {{(32-WIDTH){1'b0}}, output_reg};  // OUTPUT
         4'h4:    rdata_o = {{(32-WIDTH){1'b0}}, sw_i};        // INPUT
         default: rdata_o = 32'b0;

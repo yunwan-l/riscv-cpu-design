@@ -94,11 +94,11 @@ module rvp_soc (
   );
 
   // =========================================================================
-  // Data RAM（64KB）
+  // Data RAM（8KB，DEPTH=2048 → ADDR_BITS=11 → 13位地址）
   // =========================================================================
   rvp_data_mem ram (
     .clk_i         (clk_i),
-    .addr_i        (dbus_addr),
+    .addr_i        (dbus_addr[12:0]),
     .write_data_i  (dbus_wdata),
     .mem_read_i    (dbus_read  && is_ram),
     .mem_write_i   (dbus_write && is_ram),
@@ -113,10 +113,10 @@ module rvp_soc (
   rvp_uart uart (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
-    .addr_i  (dbus_addr),
+    .addr_i  (dbus_addr[3:0]),
     .read_i  (dbus_read  && is_uart),
     .write_i (dbus_write && is_uart),
-    .wdata_i (dbus_wdata),
+    .wdata_i (dbus_wdata[7:0]),
     .rdata_o (uart_rdata),
     .tx_o    (uart_tx_o)
   );
@@ -127,10 +127,10 @@ module rvp_soc (
   rvp_gpio gpio (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
-    .addr_i  (dbus_addr),
+    .addr_i  (dbus_addr[3:0]),
     .read_i  (dbus_read  && is_gpio),
     .write_i (dbus_write && is_gpio),
-    .wdata_i (dbus_wdata),
+    .wdata_i (dbus_wdata[15:0]),
     .rdata_o (gpio_rdata),
     .led_o   (led_o),
     .sw_i    (sw_i)
@@ -142,10 +142,10 @@ module rvp_soc (
   rvp_timer timer (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
-    .addr_i  (dbus_addr),
+    .addr_i  (dbus_addr[3:0]),
     .read_i  (dbus_read  && is_timer),
     .write_i (dbus_write && is_timer),
-    .wdata_i (dbus_wdata),
+    .wdata_i (dbus_wdata[1:0]),
     .rdata_o (timer_rdata)
   );
 

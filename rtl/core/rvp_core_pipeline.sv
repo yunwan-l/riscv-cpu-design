@@ -60,7 +60,8 @@ module rvp_core_pipeline (
   // EX 级
   logic [1:0]  forward_a, forward_b;
   logic [31:0] ex_alu_op_a, ex_alu_op_b;
-  logic [31:0] ex_alu_result, ex_alu_cmp;
+  logic [31:0] ex_alu_result;
+  logic        ex_alu_cmp;  // 1-bit: ALU 比较结果（分支条件是否成立）
   logic [31:0] ex_forward_a_val, ex_forward_b_val;
   logic [31:0] ex_multdiv_result;    // M 扩展乘除法结果
   logic [31:0] ex_result;            // ALU 或 multdiv 结果（二选一）
@@ -106,9 +107,9 @@ module rvp_core_pipeline (
       if_pc <= if_pc_next;   // 正常更新
   end
 
-  // 指令存储器
+  // 指令存储器（DEPTH=2048 → ADDR_BITS=11 → 11位字地址）
   rvp_instr_mem instr_mem (
-    .addr_i  (if_pc),
+    .addr_i  (if_pc[12:2]),
     .instr_o (if_instr)
   );
 

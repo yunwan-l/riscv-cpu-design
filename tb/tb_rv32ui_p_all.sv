@@ -47,7 +47,7 @@ module tb_rv32ui_p_all;
   // 外部数据存储器
   rvp_data_mem data_mem (
     .clk_i         (clk),
-    .addr_i        (dbus_addr),
+    .addr_i        (dbus_addr[12:0]),
     .write_data_i  (dbus_wdata),
     .mem_read_i    (dbus_read),
     .mem_write_i   (dbus_write),

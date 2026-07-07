@@ -44,7 +44,7 @@ module tb_core_pipeline;
   // 外部数据存储器（SoC 顶层会放总线互连，这里直接连）
   rvp_data_mem data_mem (
     .clk_i         (clk),
-    .addr_i        (dbus_addr),
+    .addr_i        (dbus_addr[12:0]),
     .write_data_i  (dbus_wdata),
     .mem_read_i    (dbus_read),
     .mem_write_i   (dbus_write),

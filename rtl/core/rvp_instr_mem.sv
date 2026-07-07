@@ -1,41 +1,29 @@
 // =============================================================================
 // rvp_instr_mem.sv — RVP 指令存储器
 // =============================================================================
-// 功能：根据 PC 地址读出 32 位指令。只读（单周期 CPU 不写指令存储器）。
+// 功能：根据 PC 字地址读出 32 位指令。只读。
 //
-// 接口：
-//   addr_i  : PC 地址（字节地址）
-//   instr_o : 读出的 32 位指令
-//
-// 设计要点：
-//   1. 异步读：给地址立即出指令，单周期 CPU 一个周期内完成取指
-//   2. 字对齐：RISC-V 指令 32 位=4字节，PC 低 2 位恒 0，用 addr[31:2] 做字索引
-//   3. 初始化：用 $readmemh 从 .hex 文件加载程序，仿真时用
-//   4. 容量：16K 条指令 = 64KB（够跑测试程序，FPGA 上可用 BRAM）
+// 端口宽度说明：
+//   addr_i 宽度 = ADDR_BITS（字地址，不含字节偏移位）
+//   DEPTH=2048 → ADDR_BITS=11 → addr_i 为 11 位
+//   端口每一位都被使用，避免综合 unconnected port warning
 // =============================================================================
 
 module rvp_instr_mem #(
-  parameter int DEPTH = 16384  // 16K 条指令
+  parameter int DEPTH = 2048,                    // 2K 条指令 = 8KB
+  parameter int ADDR_BITS = $clog2(DEPTH)        // 字地址位宽（自动计算）
 ) (
-  input  logic [31:0] addr_i,
-  output logic [31:0] instr_o
+  input  logic [ADDR_BITS-1:0] addr_i,           // 字地址（PC[ADDR_BITS+1:2]）
+  output logic [31:0]           instr_o
 );
 
   // 存储阵列：DEPTH 个 32 位字
   logic [31:0] mem [0:DEPTH-1];
 
-  // 异步读：用字节地址的高 30 位做字索引
-  assign instr_o = mem[addr_i[31:2]];
+  // 异步读
+  assign instr_o = mem[addr_i];
 
-  // 仿真初始化：从 hex 文件加载
-  // 综合时这一段会被忽略（FPGA 上用 .coe/.mif 初始化 BRAM）
-  initial begin
-    // 默认填充 NOP（addi x0, x0, 0 = 0x00000013）
-    for (int i = 0; i < DEPTH; i++) begin
-      mem[i] = 32'h00000013;
-    end
-    // 如果有 hex 文件则加载（路径在 testbench 里用 plusarg 传入或写死）
-    // $readmemh("program.hex", mem);
-  end
+  // 仿真时：testbench 用 $readmemh 覆盖 mem 加载测试程序
+  // 综合时：RAM 不初始化（FPGA 上电后通过 JTAG/UART 加载程序）
 
 endmodule : rvp_instr_mem

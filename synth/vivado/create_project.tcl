@@ -28,7 +28,7 @@ set project_name  "rvp_nexys4"
 set project_dir   "build/vivado"
 set board         "nexys4"
 set config_name   "phase2_full_rv32i"
-set top_module    "rvp_core"
+set top_module    "rvp_fpga_top"
 
 if { [llength $argv] > 0 } {
     for {set i 0} {$i < [llength $argv]} {incr i} {

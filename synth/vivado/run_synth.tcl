@@ -1,229 +1,183 @@
 ## =============================================================================
-## run_synth.tcl - RVP Synthesis Flow Script
+## run_synth.tcl - RVP Vivado 综合脚本（一键综合 + 资源/时序报告）
 ## =============================================================================
-## Creates the Vivado project, runs synthesis, and generates resource
-## utilization and timing reports.
+## 用法：
+##   vivado -mode batch -source synth/vivado/run_synth.tcl
 ##
-## Usage (from project root):
-##   vivado -mode batch -source synth/vivado/run_synth.tcl -tclargs [options]
-##
-## Options (all optional, defaults shown):
-##   -board        nexys4             Target board: nexys4 | zybo
-##   -config       phase2_full_rv32i  Named config from config/rvp_configs.yaml
-##   -project_name rvp_nexys4         Vivado project name
-##   -project_dir  build/vivado       Output directory
-##   -top          rvp_core           Top-level module
-##   -jobs         4                  Number of parallel synthesis jobs
-##
-## Examples:
-##   vivado -mode batch -source synth/vivado/run_synth.tcl \
-##          -tclargs -board nexys4 -config phase3_icache_lru
-##
-##   vivado -mode batch -source synth/vivado/run_synth.tcl \
-##          -tclargs -config phase3_full -jobs 8
+## 功能：
+##   1. 调用 create_project.tcl 创建工程
+##   2. 运行综合 (synth_design)
+##   3. 运行实现 (opt_design + place_design + route_design)
+##   4. 生成资源占用报告和时序报告
+##   5. 输出 Fmax / LUT / FF / BRAM 关键指标
 ## =============================================================================
 
-# -----------------------------------------------------------------------------
-# Parse command-line arguments
-# -----------------------------------------------------------------------------
-set board         "nexys4"
-set config_name   "phase2_full_rv32i"
-set project_name  "rvp_nexys4"
-set project_dir   "build/vivado"
-set top_module    "rvp_core"
-set num_jobs      4
-
-if { [llength $argv] > 0 } {
-    for {set i 0} {$i < [llength $argv]} {incr i} {
-        set arg [lindex $argv $i]
-        switch -- $arg {
-            -board        { incr i; set board        [lindex $argv $i] }
-            -config       { incr i; set config_name  [lindex $argv $i] }
-            -project_name { incr i; set project_name [lindex $argv $i] }
-            -project_dir  { incr i; set project_dir  [lindex $argv $i] }
-            -top          { incr i; set top_module   [lindex $argv $i] }
-            -jobs         { incr i; set num_jobs     [lindex $argv $i] }
-            default {
-                puts "WARNING: Unknown argument '$arg'"
-            }
-        }
-    }
-}
-
-# -----------------------------------------------------------------------------
-# Resolve script and project paths
-# -----------------------------------------------------------------------------
-set script_dir   [file dirname [info script]]
-set project_root [file normalize [file join $script_dir .. ..]]
-set create_proj   [file join $script_dir "create_project.tcl"]
-
-set report_dir [file join $project_root $project_dir "reports" ${config_name}]
-file mkdir $report_dir
+set project_root  [file normalize [file join [file dirname [info script]] .. ..]]
+set script_dir    [file dirname [info script]]
 
 puts "============================================================================="
-puts " RVP Synthesis Flow"
-puts "============================================================================="
-puts " Board         : $board"
-puts " Config         : $config_name"
-puts " Top module    : $top_module"
-puts " Jobs           : $num_jobs"
-puts " Report dir    : $report_dir"
+puts " RVP Vivado Synthesis Flow"
+puts " Project root: $project_root"
 puts "============================================================================="
 
 # -----------------------------------------------------------------------------
-# Step 1: Create the Vivado project (calls create_project.tcl)
+# Step 1: 创建工程（调用 create_project.tcl）
 # -----------------------------------------------------------------------------
-puts ""
-puts "--- Step 1: Creating Vivado project ---"
-puts ""
+puts "\n>>> Step 1: Creating Vivado project..."
 
-# Source the project creation script with arguments
-set argv [list \
-    -project_name $project_name \
-    -project_dir  $project_dir \
-    -board        $board \
-    -config       $config_name \
-    -top          $top_module \
-]
-source $create_proj
-
-# Re-open the project (create_project.tcl leaves it open, but ensure)
-open_project [file join $project_root $project_dir ${project_name}.xpr]
-
-puts ""
-puts "--- Project created and opened ---"
-puts ""
+# 使用 source 调用 create_project.tcl，传递 top=rvp_fpga_top
+source [file join $script_dir "create_project.tcl"]
 
 # -----------------------------------------------------------------------------
-# Step 2: Run synthesis
+# Step 2: 综合设计
 # -----------------------------------------------------------------------------
-puts "--- Step 2: Running synthesis ---"
-puts ""
-
-# Set number of jobs for parallel synthesis
-set_param general.maxThreads $num_jobs
-
-# Launch synthesis
-reset_run synth_1
-launch_run synth_1 -jobs $num_jobs
+puts "\n>>> Step 2: Running synthesis..."
+launch_runs synth_1 -jobs 4
 wait_on_run synth_1
 
-# Check synthesis status
+# 检查综合结果
 set synth_status [get_property STATUS [get_runs synth_1]]
-if {$synth_status ne "synth_design Complete"} {
-    puts "ERROR: Synthesis failed with status: $synth_status"
+puts "   Synthesis status: $synth_status"
+
+if {$synth_status ne "synth_design Complete!"} {
+    puts "ERROR: Synthesis failed! Status: $synth_status"
+    # 打开综合后的设计检查错误
+    open_run synth_1
+    puts "\n--- Critical Warnings ---"
+    foreach msg [get_msg_config -severity {CRITICAL WARNING}] {
+        puts "  $msg"
+    }
+    close_design
     exit 1
 }
 
-puts ""
-puts "--- Synthesis completed successfully ---"
-puts ""
-
 # -----------------------------------------------------------------------------
-# Step 3: Generate reports
+# Step 3: 打开综合后的设计，提取资源报告
 # -----------------------------------------------------------------------------
-
-# --- 3a. Utilization report ---
-puts "--- Step 3a: Generating utilization report ---"
-set util_report [file join $report_dir "utilization.rpt"]
-# Open synthesized design for report generation
+puts "\n>>> Step 3: Extracting utilization report..."
 open_run synth_1
 
-# Write Vivado's built-in utilization report
-write_report -force -report_file $util_report -type utilization
+# 资源利用率
+set util [report_utilization -return_string]
+puts "\n============================================"
+puts " Resource Utilization (Post-Synthesis)"
+puts "============================================"
+puts $util
 
-# Also capture the summary on console
-puts ""
-puts "=== Resource Utilization Summary ==="
-report_utilization -hierarchical -hierarchical_depth 3
-report_utilization -slr
-puts ""
+# 提取关键资源数据
+set lut_count  [get_property SLICE_LUTS [get_utilization -type LUT]]
+set ff_count   [get_property SLICE_REGISTERS [get_utilization -type REG]]
+set bram_count [get_property BLOCKRAM [get_utilization -type BRAM]]
+set dsp_count  [get_property DSP [get_utilization -type DSP]]
 
-# Save utilization summary to report file
-set fh [open $util_report "a"]
-puts $fh ""
-puts $fh "==================================================================="
-puts $fh " RVP Synthesis Utilization Report"
-puts $fh "==================================================================="
-puts $fh " Config: $config_name"
-puts $fh " Board:  $board"
-puts $fh " Top:    $top_module"
-puts $fh " Date:   [clock format [clock seconds]]"
-puts $fh "==================================================================="
-puts $fh ""
-close $fh
+puts "\n============================================"
+puts " Key Resource Summary"
+puts "============================================"
+puts "  LUTs:     $lut_count / 63400  ([format "%.1f" [expr {$lut_count * 100.0 / 63400}]]%)"
+puts "  FFs:      $ff_count / 126800  ([format "%.1f" [expr {$ff_count * 100.0 / 126800}]]%)"
+puts "  BRAM:     $bram_count / 135"
+puts "  DSP:      $dsp_count / 240"
 
-# Re-run report_utilization to append to the file
-report_utilization -file $util_report -append
-report_utilization -hierarchical -file $util_report -append
+# -----------------------------------------------------------------------------
+# Step 4: 时序报告
+# -----------------------------------------------------------------------------
+puts "\n>>> Step 4: Extracting timing report..."
 
-# --- 3b. Timing report ---
-puts "--- Step 3b: Generating timing report ---"
-set timing_report [file join $report_dir "timing.rpt"]
+# 获取时序摘要
+set timing_summary [report_timing_summary -return_string -max_paths 10]
+puts "\n============================================"
+puts " Timing Summary (Post-Synthesis)"
+puts "============================================"
+puts $timing_summary
 
-report_timing_summary -file $timing_report
-report_timing_summary -max_paths 10 -file $timing_report -append
+# 提取 WNS (Worst Negative Slack)
+set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1]]
+if {$wns eq ""} {
+    set wns "N/A"
+}
 
-# Print timing summary to console
-puts ""
-puts "=== Timing Summary ==="
-report_timing_summary
-puts ""
+puts "\n============================================"
+puts " Timing Summary"
+puts "============================================"
+puts "  WNS (Worst Negative Slack): $wns ns"
+if {$wns ne "N/A" && $wns >= 0} {
+    set fmax [expr {1000.0 / (10.0 - $wns)}]
+    puts "  Estimated Fmax: [format "%.2f" $fmax] MHz"
+} else {
+    puts "  Timing not met (or no timing paths)"
+}
 
-# --- 3c. Clock utilization ---
-set clock_report [file join $report_dir "clocks.rpt"]
-report_clocks -file $clock_report
-
-# --- 3d. Power report ---
-puts "--- Step 3c: Generating power report ---"
-set power_report [file join $report_dir "power.rpt"]
-report_power -file $power_report
-
-puts ""
-puts "=== Power Summary ==="
-report_power -hier
-puts ""
-
-# --- 3e. Design summary ---
-set summary_file [file join $report_dir "synth_summary.txt"]
-set fh [open $summary_file "w"]
-puts $fh "==================================================================="
-puts $fh " RVP Synthesis Summary"
-puts $fh "==================================================================="
-puts $fh " Project:        $project_name"
-puts $fh " Configuration:  $config_name"
-puts $fh " Board:          $board"
-puts $fh " Top module:     $top_module"
-puts $fh " Target part:    [get_property PART [current_project]]"
-puts $fh " Synthesis jobs: $num_jobs"
-puts $fh " Date:           [clock format [clock seconds]]"
-puts $fh "==================================================================="
-puts $fh ""
-puts $fh "Reports generated:"
-puts $fh "  Utilization: $util_report"
-puts $fh "  Timing:      $timing_report"
-puts $fh "  Clocks:      $clock_report"
-puts $fh "  Power:       $power_report"
-puts $fh "==================================================================="
-close $fh
-
-# Close the synthesized design
 close_design
 
 # -----------------------------------------------------------------------------
-# Step 4: Print final summary
+# Step 5: 运行实现（布局布线）
 # -----------------------------------------------------------------------------
+puts "\n>>> Step 5: Running implementation (place & route)..."
+launch_runs impl_1 -jobs 4
+wait_on_run impl_1
+
+set impl_status [get_property STATUS [get_runs impl_1]]
+puts "   Implementation status: $impl_status"
+
+# -----------------------------------------------------------------------------
+# Step 6: 实现后资源/时序报告
+# -----------------------------------------------------------------------------
+if {$impl_status eq "route_design Complete!"} {
+    puts "\n>>> Step 6: Extracting post-implementation reports..."
+    open_run impl_1
+
+    set util_impl [report_utilization -return_string]
+    puts "\n============================================"
+    puts " Resource Utilization (Post-Implementation)"
+    puts "============================================"
+    puts $util_impl
+
+    set timing_impl [report_timing_summary -return_string -max_paths 10]
+    puts "\n============================================"
+    puts " Timing Summary (Post-Implementation)"
+    puts "============================================"
+    puts $timing_impl
+
+    set wns_impl [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1]]
+    puts "\n============================================"
+    puts " Final Summary"
+    puts "============================================"
+    puts "  Post-Impl WNS: $wns_impl ns"
+    if {$wns_impl ne "" && $wns_impl >= 0} {
+        set fmax_impl [expr {1000.0 / (10.0 - $wns_impl)}]
+        puts "  Final Fmax: [format "%.2f" $fmax_impl] MHz"
+        puts "  Throughput (ideal CPI=1): [format "%.2f" $fmax_impl] MIPS"
+    } else {
+        puts "  Timing NOT met after implementation"
+    }
+
+    close_design
+} else {
+    puts "\nWARNING: Implementation did not complete successfully."
+    puts "Check the Vivado log for details."
+}
+
+# -----------------------------------------------------------------------------
+# Step 7: 生成 Bitstream（可选）
+# -----------------------------------------------------------------------------
+puts "\n>>> Step 7: Generating bitstream..."
+launch_runs impl_1 -to_step write_bitstream -jobs 4
+wait_on_run impl_1
+
+set bitstream_path [file join $project_root "build" "vivado" "rvp_nexys4.runs" "impl_1" "rvp_fpga_top.bit"]
+if {[file exists $bitstream_path]} {
+    puts "\n============================================"
+    puts " SUCCESS: Bitstream generated!"
+    puts " Path: $bitstream_path"
+    puts "============================================"
+} else {
+    puts "\nWARNING: Bitstream not found at expected location."
+    puts "Expected: $bitstream_path"
+}
+
+puts "\n============================================================================="
+puts " Synthesis flow complete."
 puts "============================================================================="
-puts " RVP Synthesis Flow Complete"
-puts "============================================================================="
-puts " Configuration:  $config_name"
-puts " Project:         $project_name"
-puts " Synthesis status: $synth_status"
-puts ""
-puts " Reports saved to: $report_dir"
-puts "   - utilization.rpt   (resource usage)"
-puts "   - timing.rpt         (timing summary + critical paths)"
-puts "   - clocks.rpt         (clock resources)"
-puts "   - power.rpt          (power estimation)"
-puts "   - synth_summary.txt  (overall summary)"
-puts "============================================================================="
+
+# 关闭工程
+close_project
