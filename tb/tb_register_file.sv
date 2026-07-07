@@ -107,21 +107,22 @@ module tb_register_file;
     chk(rdata1, 32'hAAAA0000, "port1 reads x7");
     chk(rdata2, 32'h0000BBBB, "port2 reads x8");
 
-    // ===== 5. 同周期写读同地址 → 读到旧值 =====
-    $display("--- Write & read same addr same cycle (old value) ---");
+    // ===== 5. 同周期写读同地址 → 读到旧值（写沿才生效）=====
+    $display("--- Write & read same addr same cycle (read old value) ---");
     wr(5'd15, 32'h11111111);      // 先写入 x15 = 11111111
-    // 现在读 x15 应该是 11111111，然后本周期写 x15=22222222
+    // 本周期写 x15=22222222，同时读 x15
+    // 无写优先：读到的是旧值（11111111），新值下个周期才生效
     @(negedge clk);
     raddr1 = 5'd15;
     we     = 1;
     waddr  = 5'd15;
     wdata  = 32'h22222222;
     #1;
-    chk(rdata1, 32'h11111111, "read old value during write");  // 读到旧值
+    chk(rdata1, 32'h11111111, "read old value during write cycle");  // 读到旧值
     @(negedge clk);
     we = 0;
     #1;
-    chk(rdata1, 32'h22222222, "read new value after write");   // 下一周期读到新值
+    chk(rdata1, 32'h22222222, "read new value after write");        // 现在才是新值
 
     // ===== 汇总 =====
     $display("==========================================================");

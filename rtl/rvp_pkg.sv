@@ -105,6 +105,29 @@ package rvp_pkg;
   } mem_size_e;
 
   // ---------------------------------------------------------------------------
+  // M 扩展操作码 multdiv_op_e
+  // ---------------------------------------------------------------------------
+  //   MUL    : rd = (rs1 × rs2)[31:0]     有符号×有符号，取低32位
+  //   MULH   : rd = (rs1 × rs2)[63:32]    有符号×有符号，取高32位
+  //   MULHSU : rd = (rs1 × rs2)[63:32]    有符号×无符号，取高32位
+  //   MULHU  : rd = (rs1 × rs2)[63:32]    无符号×无符号，取高32位
+  //   DIV    : rd = rs1 ÷ rs2             有符号除法
+  //   DIVU   : rd = rs1 ÷ rs2             无符号除法
+  //   REM    : rd = rs1 % rs2             有符号取余
+  //   REMU   : rd = rs1 % rs2             无符号取余
+  // ---------------------------------------------------------------------------
+  typedef enum logic [2:0] {
+    MD_MUL    = 3'd0,
+    MD_MULH   = 3'd1,
+    MD_MULHSU = 3'd2,
+    MD_MULHU  = 3'd3,
+    MD_DIV    = 3'd4,
+    MD_DIVU   = 3'd5,
+    MD_REM    = 3'd6,
+    MD_REMU   = 3'd7
+  } multdiv_op_e;
+
+  // ---------------------------------------------------------------------------
   // 控制信号结构体 ctrl_t
   // ---------------------------------------------------------------------------
   // 译码器把一条指令翻译成这个结构体，送给数据通路的各个模块。
@@ -120,6 +143,10 @@ package rvp_pkg;
     alu_op_e          alu_op;         // ALU 做什么运算
     logic             alu_op_a_sel;   // 0=rs1, 1=PC (auipc/分支/jal 地址计算)
     logic             alu_op_b_sel;   // 0=rs2, 1=imm (I/S/U/B/J 用立即数)
+
+    // --- M 扩展（乘除法）---
+    logic             use_multdiv;    // 1=本条指令用乘除法单元（结果走 multdiv 而非 ALU）
+    multdiv_op_e      multdiv_op;     // 乘除法操作类型
 
     // --- 立即数 ---
     imm_type_e        imm_type;       // 哪种立即数格式
@@ -153,6 +180,8 @@ package rvp_pkg;
     c.alu_op       = ALU_ADD;
     c.alu_op_a_sel = 1'b0;
     c.alu_op_b_sel = 1'b0;
+    c.use_multdiv  = 1'b0;
+    c.multdiv_op   = MD_MUL;
     c.imm_type     = IMM_I;
     c.reg_write    = 1'b0;
     c.wb_sel       = WB_ALU;

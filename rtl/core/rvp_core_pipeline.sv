@@ -22,7 +22,17 @@ module rvp_core_pipeline (
   // 调试接口
   output logic [31:0] pc_o,
   output logic [31:0] instr_o,
-  output logic        illegal_o
+  output logic        illegal_o,
+
+  // 数据总线接口（SoC 用）
+  // CPU 作为总线主设备，通过这些端口访问外部 RAM / UART / GPIO / Timer
+  output logic [31:0]             dbus_addr_o,      // 访存地址（字节地址）
+  output logic                    dbus_read_o,       // 读使能
+  output logic                    dbus_write_o,      // 写使能
+  output rvp_pkg::mem_size_e      dbus_size_o,       // 访问大小 B/H/W
+  output logic                    dbus_unsigned_o,   // 无符号读
+  output logic [31:0]             dbus_wdata_o,      // 写数据
+  input  logic [31:0]             dbus_rdata_i       // 读返回数据
 );
 
   import rvp_pkg::*;
@@ -40,6 +50,7 @@ module rvp_core_pipeline (
   ctrl_t       id_ctrl;
   logic [31:0] id_imm;
   logic [31:0] id_rs1_data, id_rs2_data;
+  logic [31:0] id_rs1_fwd, id_rs2_fwd;  // WB→ID 前递后的值
 
   // ID/EX 级间
   logic [31:0] ex_pc;
@@ -51,6 +62,8 @@ module rvp_core_pipeline (
   logic [31:0] ex_alu_op_a, ex_alu_op_b;
   logic [31:0] ex_alu_result, ex_alu_cmp;
   logic [31:0] ex_forward_a_val, ex_forward_b_val;
+  logic [31:0] ex_multdiv_result;    // M 扩展乘除法结果
+  logic [31:0] ex_result;            // ALU 或 multdiv 结果（二选一）
 
   // EX/MEM 级间
   logic [31:0] mem_pc;
@@ -60,6 +73,7 @@ module rvp_core_pipeline (
   // MEM 级
   logic [31:0] mem_rdata;
   logic [31:0] mem_imm_wb;   // lui 的 imm 传到 WB 级
+  logic [31:0] mem_wb_data;  // MEM 级最终写回值（用于 EX/MEM 前递）
 
   // MEM/WB 级间
   logic [31:0] wb_pc;
@@ -117,8 +131,8 @@ module rvp_core_pipeline (
     .id_ex_stall_i (stall),
     .id_pc_i       (id_pc),
     .id_ctrl_i     (id_ctrl),
-    .id_rs1_data_i (id_rs1_data),
-    .id_rs2_data_i (id_rs2_data),
+    .id_rs1_data_i (id_rs1_fwd),
+    .id_rs2_data_i (id_rs2_fwd),
     .id_imm_i      (id_imm),
     .ex_pc_o       (ex_pc),
     .ex_ctrl_o     (ex_ctrl),
@@ -131,7 +145,7 @@ module rvp_core_pipeline (
     .ex_mem_stall_i (1'b0),
     .ex_pc_i        (ex_pc),
     .ex_ctrl_i      (ex_ctrl),
-    .ex_alu_result_i(ex_alu_result),
+    .ex_alu_result_i(ex_result),       // ALU 或 multdiv 结果
     .ex_rs2_data_i  (ex_forward_b_val),  // store 用前递后的值
     .ex_imm_i       (ex_imm),
     .mem_pc_o       (mem_pc),
@@ -179,6 +193,19 @@ module rvp_core_pipeline (
     .rdata2_o (id_rs2_data)
   );
 
+  // -------------------------------------------------------------------------
+  // WB→ID 前递（替代寄存器堆 write-first）
+  // -------------------------------------------------------------------------
+  // 问题：寄存器堆同步写 + 异步读。当 WB 级写 rd 的同时 ID 级读同一个寄存器，
+  //       ID 读到的是旧值（写沿还没到），导致后一条指令用了过期数据。
+  // 解决：如果 WB 级正在写 rd，且 rd == ID 级要读的 rs1/rs2，直接用 wb_data。
+  //       这和 EX 级前递原理一样，只是发生在更早的 ID 级。
+  // 注意：rd==x0 时不前递（x0 永远为 0）。
+  assign id_rs1_fwd = (wb_ctrl.reg_write && (wb_ctrl.rd_addr != 5'd0) &&
+                       (wb_ctrl.rd_addr == id_ctrl.rs1_addr)) ? wb_data : id_rs1_data;
+  assign id_rs2_fwd = (wb_ctrl.reg_write && (wb_ctrl.rd_addr != 5'd0) &&
+                       (wb_ctrl.rd_addr == id_ctrl.rs2_addr)) ? wb_data : id_rs2_data;
+
   // =========================================================================
   // 4. EX 级：ALU 运算 + 前递
   // =========================================================================
@@ -199,14 +226,14 @@ module rvp_core_pipeline (
     unique case (forward_a)
       2'b00:   ex_forward_a_val = ex_rs1_data;
       2'b01:   ex_forward_a_val = wb_data;          // MEM/WB 前递
-      2'b10:   ex_forward_a_val = mem_alu_result;   // EX/MEM 前递
+      2'b10:   ex_forward_a_val = mem_wb_data;      // EX/MEM 前递（用正确写回值）
       default: ex_forward_a_val = ex_rs1_data;
     endcase
 
     unique case (forward_b)
       2'b00:   ex_forward_b_val = ex_rs2_data;
       2'b01:   ex_forward_b_val = wb_data;
-      2'b10:   ex_forward_b_val = mem_alu_result;
+      2'b10:   ex_forward_b_val = mem_wb_data;      // EX/MEM 前递（用正确写回值）
       default: ex_forward_b_val = ex_rs2_data;
     endcase
   end
@@ -224,19 +251,45 @@ module rvp_core_pipeline (
     .cmp_result_o (ex_alu_cmp)
   );
 
-  // =========================================================================
-  // 5. MEM 级：数据存储器访问
-  // =========================================================================
-  rvp_data_mem data_mem (
-    .clk_i         (clk_i),
-    .addr_i        (mem_alu_result),
-    .write_data_i  (mem_rs2_data),
-    .mem_read_i    (mem_ctrl.mem_read),
-    .mem_write_i   (mem_ctrl.mem_write),
-    .mem_size_i    (mem_ctrl.mem_size),
-    .mem_unsigned_i(mem_ctrl.mem_unsigned),
-    .read_data_o   (mem_rdata)
+  // 乘除法单元（M 扩展）— 操作数用前递后的值
+  rvp_multdiv multdiv (
+    .op_i       (ex_ctrl.multdiv_op),
+    .operand_a_i(ex_forward_a_val),
+    .operand_b_i(ex_forward_b_val),
+    .result_o   (ex_multdiv_result)
   );
+
+  // 结果选择：M 扩展指令用 multdiv 结果，其余用 ALU 结果
+  assign ex_result = ex_ctrl.use_multdiv ? ex_multdiv_result : ex_alu_result;
+
+  // =========================================================================
+  // 5. MEM 级：数据总线接口（原 data_mem 移到 SoC 顶层）
+  // =========================================================================
+  // CPU 不再直接例化 data_mem，而是通过总线端口对外访问。
+  // SoC 顶层会把这些端口连到总线互连，再分发到 RAM / UART / GPIO / Timer。
+  assign dbus_addr_o      = mem_alu_result;
+  assign dbus_wdata_o     = mem_rs2_data;
+  assign dbus_read_o      = mem_ctrl.mem_read;
+  assign dbus_write_o     = mem_ctrl.mem_write;
+  assign dbus_size_o      = mem_ctrl.mem_size;
+  assign dbus_unsigned_o  = mem_ctrl.mem_unsigned;
+  assign mem_rdata        = dbus_rdata_i;
+
+  // -------------------------------------------------------------------------
+  // 计算 MEM 级指令的最终写回值（用于 EX/MEM 前递）
+  // 修复 bug：原来前递直接用 mem_alu_result，对 lui（wb_sel=WB_IMM）会前递 0
+  //          因为 lui 的 ALU 计算 0+0=0（alu_op_b_sel 默认用 rs2=x0）
+  //          现在根据 wb_sel 计算正确的写回值，与 WB 级逻辑一致
+  // -------------------------------------------------------------------------
+  always_comb begin
+    unique case (mem_ctrl.wb_sel)
+      WB_ALU: mem_wb_data = mem_alu_result;
+      WB_MEM: mem_wb_data = mem_rdata;
+      WB_PC4: mem_wb_data = mem_pc + 32'd4;
+      WB_IMM: mem_wb_data = mem_imm;
+      default: mem_wb_data = mem_alu_result;
+    endcase
+  end
 
   // =========================================================================
   // 6. WB 级：写回选择

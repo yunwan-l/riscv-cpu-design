@@ -187,50 +187,70 @@ module rvp_decoder (
       end
 
       // =====================================================================
-      // OP: R 型，rd = rs1 OP rs2，funct3 + funct7[30] 决定运算
+      // OP: R 型，rd = rs1 OP rs2
+      //   funct7=0000000/0100000 → 基础 RV32I（add/sub/sll/...）
+      //   funct7=0000001         → M 扩展（mul/mulh/.../div/rem）
       // =====================================================================
       7'b0110011: begin
         ctrl.alu_op_b_sel = 1'b0;          // operand B = rs2
         ctrl.reg_write    = 1'b1;
         ctrl.wb_sel       = WB_ALU;
         ctrl.illegal      = 1'b0;
-        unique case (funct3)
-          3'b000:  begin
-            if      (funct7[5] == 1'b0) ctrl.alu_op = ALU_ADD;  // add
-            else if (funct7[5] == 1'b1) ctrl.alu_op = ALU_SUB;  // sub
-            else                         ctrl.illegal = 1'b1;
-          end
-          3'b001:  begin
-            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLL;       // sll
-            else                    ctrl.illegal = 1'b1;
-          end
-          3'b010:  begin
-            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLT;       // slt
-            else                    ctrl.illegal = 1'b1;
-          end
-          3'b011:  begin
-            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLTU;      // sltu
-            else                    ctrl.illegal = 1'b1;
-          end
-          3'b100:  begin
-            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_XOR;       // xor
-            else                    ctrl.illegal = 1'b1;
-          end
-          3'b101:  begin
-            if      (funct7[5] == 1'b0) ctrl.alu_op = ALU_SRL;  // srl
-            else if (funct7[5] == 1'b1) ctrl.alu_op = ALU_SRA;  // sra
-            else                         ctrl.illegal = 1'b1;
-          end
-          3'b110:  begin
-            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_OR;        // or
-            else                    ctrl.illegal = 1'b1;
-          end
-          3'b111:  begin
-            if (funct7[5] == 1'b0) ctrl.alu_op = ALU_AND;       // and
-            else                    ctrl.illegal = 1'b1;
-          end
-          default: ctrl.illegal = 1'b1;
-        endcase
+
+        if (funct7 == 7'b0000001) begin
+          // --- M 扩展：走乘除法单元 ---
+          ctrl.use_multdiv = 1'b1;
+          unique case (funct3)
+            3'b000:  ctrl.multdiv_op = MD_MUL;     // mul
+            3'b001:  ctrl.multdiv_op = MD_MULH;    // mulh
+            3'b010:  ctrl.multdiv_op = MD_MULHSU;  // mulhsu
+            3'b011:  ctrl.multdiv_op = MD_MULHU;   // mulhu
+            3'b100:  ctrl.multdiv_op = MD_DIV;     // div
+            3'b101:  ctrl.multdiv_op = MD_DIVU;    // divu
+            3'b110:  ctrl.multdiv_op = MD_REM;     // rem
+            3'b111:  ctrl.multdiv_op = MD_REMU;    // remu
+            default: ctrl.illegal = 1'b1;
+          endcase
+        end else begin
+          // --- 基础 RV32I：走 ALU ---
+          unique case (funct3)
+            3'b000:  begin
+              if      (funct7[5] == 1'b0) ctrl.alu_op = ALU_ADD;  // add
+              else if (funct7[5] == 1'b1) ctrl.alu_op = ALU_SUB;  // sub
+              else                         ctrl.illegal = 1'b1;
+            end
+            3'b001:  begin
+              if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLL;       // sll
+              else                    ctrl.illegal = 1'b1;
+            end
+            3'b010:  begin
+              if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLT;       // slt
+              else                    ctrl.illegal = 1'b1;
+            end
+            3'b011:  begin
+              if (funct7[5] == 1'b0) ctrl.alu_op = ALU_SLTU;      // sltu
+              else                    ctrl.illegal = 1'b1;
+            end
+            3'b100:  begin
+              if (funct7[5] == 1'b0) ctrl.alu_op = ALU_XOR;       // xor
+              else                    ctrl.illegal = 1'b1;
+            end
+            3'b101:  begin
+              if      (funct7[5] == 1'b0) ctrl.alu_op = ALU_SRL;  // srl
+              else if (funct7[5] == 1'b1) ctrl.alu_op = ALU_SRA;  // sra
+              else                         ctrl.illegal = 1'b1;
+            end
+            3'b110:  begin
+              if (funct7[5] == 1'b0) ctrl.alu_op = ALU_OR;        // or
+              else                    ctrl.illegal = 1'b1;
+            end
+            3'b111:  begin
+              if (funct7[5] == 1'b0) ctrl.alu_op = ALU_AND;       // and
+              else                    ctrl.illegal = 1'b1;
+            end
+            default: ctrl.illegal = 1'b1;
+          endcase
+        end
       end
 
       // =====================================================================

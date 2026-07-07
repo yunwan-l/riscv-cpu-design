@@ -2,25 +2,55 @@
 // tb_core_pipeline.sv — 流水线 CPU 集成测试
 // =============================================================================
 // 测试覆盖：数据冒险(前递)、Load-Use冒险(停顿)、控制冒险(分支/跳转冲刷)
+// 注意：CPU 的数据存储器已移到外部（SoC 总线接口），这里单独例化。
 // =============================================================================
 
 `timescale 1ns/1ps
 
 module tb_core_pipeline;
 
+  import rvp_pkg::*;
+
   logic clk, rst_n;
   logic [31:0] pc, instr;
   logic        illegal;
+
+  // 数据总线信号
+  logic [31:0]    dbus_addr;
+  logic           dbus_read, dbus_write;
+  mem_size_e      dbus_size;
+  logic           dbus_unsigned;
+  logic [31:0]    dbus_wdata;
+  logic [31:0]    dbus_rdata;
 
   int errors = 0;
   int tests  = 0;
 
   rvp_core_pipeline dut (
-    .clk_i     (clk),
-    .rst_ni    (rst_n),
-    .pc_o      (pc),
-    .instr_o   (instr),
-    .illegal_o (illegal)
+    .clk_i          (clk),
+    .rst_ni         (rst_n),
+    .pc_o           (pc),
+    .instr_o        (instr),
+    .illegal_o      (illegal),
+    .dbus_addr_o    (dbus_addr),
+    .dbus_read_o    (dbus_read),
+    .dbus_write_o   (dbus_write),
+    .dbus_size_o    (dbus_size),
+    .dbus_unsigned_o(dbus_unsigned),
+    .dbus_wdata_o   (dbus_wdata),
+    .dbus_rdata_i   (dbus_rdata)
+  );
+
+  // 外部数据存储器（SoC 顶层会放总线互连，这里直接连）
+  rvp_data_mem data_mem (
+    .clk_i         (clk),
+    .addr_i        (dbus_addr),
+    .write_data_i  (dbus_wdata),
+    .mem_read_i    (dbus_read),
+    .mem_write_i   (dbus_write),
+    .mem_size_i    (dbus_size),
+    .mem_unsigned_i(dbus_unsigned),
+    .read_data_o   (dbus_rdata)
   );
 
   initial clk = 0;
@@ -38,11 +68,11 @@ module tb_core_pipeline;
 
   task automatic chk_mem(input [31:0] addr, input [31:0] exp, input [255:0] name);
     tests++;
-    if (dut.data_mem.mem[addr[31:2]] !== exp) begin
-      $display("  [FAIL] %-28s : MEM[%0d]=%0d, exp %0d", name, addr, dut.data_mem.mem[addr[31:2]], exp);
+    if (data_mem.mem[addr[31:2]] !== exp) begin
+      $display("  [FAIL] %-28s : MEM[%0d]=%0d, exp %0d", name, addr, data_mem.mem[addr[31:2]], exp);
       errors++;
     end else begin
-      $display("  [ OK ] %-28s : MEM[%0d]=%0d", name, addr, dut.data_mem.mem[addr[31:2]]);
+      $display("  [ OK ] %-28s : MEM[%0d]=%0d", name, addr, data_mem.mem[addr[31:2]]);
     end
   endtask
 

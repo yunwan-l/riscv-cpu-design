@@ -53,6 +53,10 @@ module rvp_core_single (
   logic [31:0] alu_result;
   logic        alu_cmp;
 
+  // 乘除法单元
+  logic [31:0] multdiv_result;
+  logic [31:0] ex_result;       // ALU 或 multdiv 的结果（二选一）
+
   // 分支
   logic        branch_taken;
 
@@ -131,6 +135,19 @@ module rvp_core_single (
   );
 
   // =========================================================================
+  // 7b. 乘除法单元（M 扩展）
+  // =========================================================================
+  rvp_multdiv multdiv (
+    .op_i       (ctrl.multdiv_op),
+    .operand_a_i(rs1_data),
+    .operand_b_i(rs2_data),
+    .result_o   (multdiv_result)
+  );
+
+  // 结果选择：M 扩展指令用 multdiv 结果，其余用 ALU 结果
+  assign ex_result = ctrl.use_multdiv ? multdiv_result : alu_result;
+
+  // =========================================================================
   // 8. 分支判定
   // =========================================================================
   rvp_branch_unit branch_unit (
@@ -158,7 +175,7 @@ module rvp_core_single (
   // =========================================================================
   always_comb begin
     unique case (ctrl.wb_sel)
-      WB_ALU: wb_data = alu_result;   // 大多数指令
+      WB_ALU: wb_data = ex_result;    // 大多数指令（含 M 扩展）
       WB_MEM: wb_data = mem_rdata;    // load 指令
       WB_PC4: wb_data = pc + 32'd4;   // jal/jalr（返回地址）
       WB_IMM: wb_data = imm;          // lui
