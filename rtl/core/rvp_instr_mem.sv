@@ -23,7 +23,14 @@ module rvp_instr_mem #(
   // 异步读
   assign instr_o = mem[addr_i];
 
+  // 初始化：填充 NOP 指令（addi x0, x0, 0）
   // 仿真时：testbench 用 $readmemh 覆盖 mem 加载测试程序
-  // 综合时：RAM 不初始化（FPGA 上电后通过 JTAG/UART 加载程序）
+  // 综合时：FPGA 上电后 RAM 内容为 NOP，避免取到随机指令
+  // （计算机名已改为英文，不会再触发 TclStackFree 崩溃）
+  initial begin
+    for (int i = 0; i < DEPTH; i++) begin
+      mem[i] = 32'h00000013;  // NOP
+    end
+  end
 
 endmodule : rvp_instr_mem

@@ -137,5 +137,12 @@ set_false_path -from [get_ports { rst_n }] -to [all_registers]
 ## Slow down the I/O timing for buttons/switches (async inputs)
 set_input_delay  -clock sys_clk_pin -max  5.0 [get_ports { sw[*] btn_center }]
 set_input_delay  -clock sys_clk_pin -min  1.0 [get_ports { sw[*] btn_center }]
-set_output_delay -clock sys_clk_pin -max  5.0 [get_ports { led[*] uart_tx seg_* an[*] }]
-set_output_delay -clock sys_clk_pin -min  1.0 [get_ports { led[*] uart_tx seg_* an[*] }]
+
+## LED 和 UART 输出延迟约束（保留，这些路径未违例）
+set_output_delay -clock sys_clk_pin -max  5.0 [get_ports { led[*] uart_tx }]
+set_output_delay -clock sys_clk_pin -min  1.0 [get_ports { led[*] uart_tx }]
+
+## 数码管是慢速 LED 显示设备（刷新率 1kHz），不需要纳秒级时序约束
+## 段码和位选信号每 1ms 才变化一次，人眼无法分辨纳秒级延迟
+## 设为 false_path 避免 Vivado 对这些路径做时序分析
+set_false_path -to [get_ports { seg_ca seg_cb seg_cc seg_cd seg_ce seg_cf seg_cg an[*] }]

@@ -32,7 +32,14 @@ module rvp_core_pipeline (
   output rvp_pkg::mem_size_e      dbus_size_o,       // 访问大小 B/H/W
   output logic                    dbus_unsigned_o,   // 无符号读
   output logic [31:0]             dbus_wdata_o,      // 写数据
-  input  logic [31:0]             dbus_rdata_i       // 读返回数据
+  input  logic [31:0]             dbus_rdata_i,      // 读返回数据
+
+  // 性能计数器输出（SoC 总线读取用）
+  output logic [31:0]             perf_cycle_o,      // 总周期数
+  output logic [31:0]             perf_inst_o,       // 完成指令数
+  output logic [31:0]             perf_stall_o,      // Load-Use 停顿数
+  output logic [31:0]             perf_flush_o,      // 分支冲刷数
+  output logic [31:0]             perf_branch_o      // 分支/跳转指令数
 );
 
   import rvp_pkg::*;
@@ -364,6 +371,112 @@ module rvp_core_pipeline (
       endcase
     end
   end
+
+  // =========================================================================
+  // 11. 性能计数器
+  // =========================================================================
+  // 5 个 32 位计数器，统计流水线运行时的关键指标。
+  // 通过 SoC 总线 MMIO（0x1003_0000）可由软件 lw 读取。
+  //
+  // 计数器说明：
+  //   cycle_count   : 每个时钟周期 +1（复位后从 0 开始）
+  //   inst_retired  : WB 阶段完成的有效指令 +1（不计入 bubble/NOP 填充）
+  //   stall_count   : Load-Use 停顿周期数（stall 有效时 +1）
+  //   flush_count   : 分支/跳转冲刷事件数（flush_if_id 有效时 +1）
+  //   branch_count  : EX 阶段遇到的分支/跳转指令数
+  //
+  // inst_retired 精确计数：用 valid 位跟踪链区分真实指令与流水线 bubble。
+  //   - 复位后流水线填充的 NOP 标记为 invalid，不计入
+  //   - flush 插入的 bubble 标记为 invalid
+  //   - stall 插入的 bubble（ID/EX）标记为 invalid
+  // =========================================================================
+
+  // --- 性能计数器寄存器 ---
+  logic [31:0] perf_cycle_r, perf_inst_r, perf_stall_r, perf_flush_r, perf_branch_r;
+
+  // --- valid 跟踪链（独立于 pipeline_regs，不修改结构体）---
+  logic id_valid_q, ex_valid_q, mem_valid_q, wb_valid_q;
+
+  // --- 分支/跳转指令检测（EX 级）---
+  logic ex_is_branch;
+  assign ex_is_branch = ex_ctrl.branch ||
+                        (ex_ctrl.next_pc == PC_JUMP) ||
+                        (ex_ctrl.next_pc == PC_JALR);
+
+  // --- valid 跟踪链逻辑 ---
+  // id_valid_q: IF/ID 寄存器中的指令是否有效（非 bubble）
+  //   flush_if_id=1 → invalid（分支冲刷插入 bubble）
+  //   stall=1       → 保持（指令在 ID 级等待）
+  //   否则           → valid=1（新指令从 IF 进入 ID）
+  //
+  // ex_valid_q: ID/EX 寄存器中的指令是否有效
+  //   flush_id_ex=1 → invalid（stall 时插入 bubble）
+  //   否则           → 传递 id_valid_q
+  //
+  // mem_valid_q / wb_valid_q: 逐级传递
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      id_valid_q  <= 1'b0;
+      ex_valid_q  <= 1'b0;
+      mem_valid_q <= 1'b0;
+      wb_valid_q  <= 1'b0;
+    end else begin
+      // IF → ID
+      if (flush_if_id)
+        id_valid_q <= 1'b0;
+      else if (!stall)
+        id_valid_q <= 1'b1;
+
+      // ID → EX
+      if (flush_id_ex)
+        ex_valid_q <= 1'b0;
+      else
+        ex_valid_q <= id_valid_q;
+
+      // EX → MEM
+      mem_valid_q <= ex_valid_q;
+
+      // MEM → WB
+      wb_valid_q <= mem_valid_q;
+    end
+  end
+
+  // --- 计数器递增逻辑 ---
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      perf_cycle_r   <= 32'b0;
+      perf_inst_r    <= 32'b0;
+      perf_stall_r   <= 32'b0;
+      perf_flush_r   <= 32'b0;
+      perf_branch_r  <= 32'b0;
+    end else begin
+      // cycle_count: 每周期 +1
+      perf_cycle_r <= perf_cycle_r + 32'd1;
+
+      // inst_retired: WB 阶段有效指令 +1
+      if (wb_valid_q)
+        perf_inst_r <= perf_inst_r + 32'd1;
+
+      // stall_count: Load-Use 停顿周期
+      if (stall)
+        perf_stall_r <= perf_stall_r + 32'd1;
+
+      // flush_count: 分支/跳转冲刷事件
+      if (flush_if_id)
+        perf_flush_r <= perf_flush_r + 32'd1;
+
+      // branch_count: EX 阶段遇到分支/跳转指令
+      if (ex_is_branch && ex_valid_q)
+        perf_branch_r <= perf_branch_r + 32'd1;
+    end
+  end
+
+  // --- 性能计数器输出 ---
+  assign perf_cycle_o  = perf_cycle_r;
+  assign perf_inst_o   = perf_inst_r;
+  assign perf_stall_o  = perf_stall_r;
+  assign perf_flush_o  = perf_flush_r;
+  assign perf_branch_o = perf_branch_r;
 
   // =========================================================================
   // 调试输出

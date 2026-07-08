@@ -49,17 +49,23 @@ module rvp_soc (
   logic [31:0]    dbus_rdata;
 
   // =========================================================================
+  // 性能计数器信号（CPU 内部统计，SoC 总线读取）
+  // =========================================================================
+  logic [31:0] perf_cycle, perf_inst, perf_stall, perf_flush, perf_branch;
+
+  // =========================================================================
   // 地址译码：根据地址高 16 位选择外设
   // =========================================================================
-  logic is_ram, is_uart, is_gpio, is_timer;
+  logic is_ram, is_uart, is_gpio, is_timer, is_perf;
 
   assign is_ram   = (dbus_addr[31:16] == 16'h0000);
   assign is_uart  = (dbus_addr[31:16] == 16'h1000);
   assign is_gpio  = (dbus_addr[31:16] == 16'h1001);
   assign is_timer = (dbus_addr[31:16] == 16'h1002);
+  assign is_perf  = (dbus_addr[31:16] == 16'h1003);
 
   // 各外设的读数据
-  logic [31:0] ram_rdata, uart_rdata, gpio_rdata, timer_rdata;
+  logic [31:0] ram_rdata, uart_rdata, gpio_rdata, timer_rdata, perf_rdata;
 
   // =========================================================================
   // 读数据多路选择
@@ -71,7 +77,27 @@ module rvp_soc (
       16'h1000:  dbus_rdata = uart_rdata;    // UART
       16'h1001:  dbus_rdata = gpio_rdata;    // GPIO
       16'h1002:  dbus_rdata = timer_rdata;   // Timer
+      16'h1003:  dbus_rdata = perf_rdata;    // 性能计数器
       default:   dbus_rdata = 32'b0;          // 未映射地址返回 0
+    endcase
+  end
+
+  // -------------------------------------------------------------------------
+  // 性能计数器读数据：根据地址低 5 位（字偏移）选择对应计数器
+  //   0x10030000: cycle_count
+  //   0x10030004: inst_retired
+  //   0x10030008: stall_count
+  //   0x1003000C: flush_count
+  //   0x10030010: branch_count
+  // -------------------------------------------------------------------------
+  always_comb begin
+    unique case (dbus_addr[6:2])
+      5'd0:    perf_rdata = perf_cycle;   // 0x00
+      5'd1:    perf_rdata = perf_inst;    // 0x04
+      5'd2:    perf_rdata = perf_stall;   // 0x08
+      5'd3:    perf_rdata = perf_flush;   // 0x0C
+      5'd4:    perf_rdata = perf_branch;  // 0x10
+      default: perf_rdata = 32'b0;
     endcase
   end
 
@@ -90,7 +116,12 @@ module rvp_soc (
     .dbus_size_o    (dbus_size),
     .dbus_unsigned_o(dbus_unsigned),
     .dbus_wdata_o   (dbus_wdata),
-    .dbus_rdata_i   (dbus_rdata)
+    .dbus_rdata_i   (dbus_rdata),
+    .perf_cycle_o   (perf_cycle),
+    .perf_inst_o    (perf_inst),
+    .perf_stall_o   (perf_stall),
+    .perf_flush_o   (perf_flush),
+    .perf_branch_o  (perf_branch)
   );
 
   // =========================================================================

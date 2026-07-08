@@ -25,7 +25,9 @@ module rvp_imm_generator (
   import rvp_pkg::*;
 
   // 消费未使用的指令位 [6:0]（opcode 字段，立即数生成器不需要）
-  wire _unused_opcode = |instr_i[6:0];
+  // 用 always_comb + (* keep *) 确保 Vivado 不会优化掉此信号
+  (* keep *) logic _unused_opcode;
+  always_comb _unused_opcode = |instr_i[6:0];
 
   // -------------------------------------------------------------------------
   // 各类型立即数的原始位提取（组合逻辑）

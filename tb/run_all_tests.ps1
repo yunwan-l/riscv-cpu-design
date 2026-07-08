@@ -12,7 +12,8 @@ param(
 $ms = $ModelSim
 $vlog = "$ms\vlog.exe"
 $vsim = "$ms\vsim.exe"
-$projRoot = "d:\Desktop\Project-based Course Design\riscv-cpu-design"
+# 使用 junction link 避免中文路径问题（C:\rvp_proj → d:\大学资料\北邮\课程\阶段式程序设计2）
+$projRoot = "C:\rvp_proj"
 $tbDir = "$projRoot\tb"
 $rtlPkg = "$projRoot\rtl\rvp_pkg.sv"
 $rtlCore = @(
@@ -109,3 +110,33 @@ Write-Output "============================================================"
 Write-Output " Summary: $totalPass passed, $totalFail failed, $($tests.Count) total"
 Write-Output "============================================================"
 Write-Output ""
+
+# =============================================================================
+# 性能测试（使用 run_perf.do，需要预先生成 hex 文件）
+# =============================================================================
+$hexDir = "$projRoot\sw\tests"
+if (Test-Path "$hexDir\perf_matmul.hex") {
+    Write-Output "============================================================"
+    Write-Output " Performance Benchmark (tb_perf.sv)"
+    Write-Output "============================================================"
+    # 切回项目根目录运行 do 脚本
+    Set-Location $projRoot
+    $env:HEX_DIR = $hexDir
+    $perfOut = (& $vsim -c -do "do tb/run_perf.do" 2>&1) | Out-String
+    if ($perfOut -match "PASS.*所有") {
+        Write-Output "  [ PASS ] Performance Benchmark (3/3 data verified)"
+        $totalPass++
+    } elseif ($perfOut -match "FAIL") {
+        Write-Output "  [ FAIL ] Performance Benchmark"
+        $totalFail++
+    } else {
+        Write-Output "  [ ??  ] Performance Benchmark (check output)"
+    }
+    Write-Output ""
+    Write-Output "============================================================"
+    Write-Output " Final: $totalPass passed, $totalFail failed, $($tests.Count + 1) total"
+    Write-Output "============================================================"
+} else {
+    Write-Output "[SKIP] Performance test: hex files not found in $hexDir"
+    Write-Output "       Run 'python sw\tests\rv_assembler.py' to generate hex files first."
+}

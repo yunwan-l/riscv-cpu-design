@@ -53,7 +53,9 @@ module rvp_fpga_top (
   logic [31:0] pc_dbg;
 
   // btn_center 目前未使用
-  wire _unused_btn = btn_center;
+  // 用 always_comb + (* keep *) 确保 Vivado 不会优化掉此信号
+  (* keep *) logic _unused_btn;
+  always_comb _unused_btn = btn_center;
 
   rvp_soc soc (
     .clk_i     (clk_div2),

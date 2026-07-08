@@ -2,10 +2,10 @@
 # Vivado v2018.3 (64-bit)
 # SW Build 2405991 on Thu Dec  6 23:38:27 MST 2018
 # IP Build 2404404 on Fri Dec  7 01:43:56 MST 2018
-# Start of session at: Wed Jul  8 17:00:41 2026
-# Process ID: 32264
+# Start of session at: Wed Jul  8 16:56:05 2026
+# Process ID: 24000
 # Current directory: C:/rvp_proj
-# Command line: vivado.exe -mode batch -source C:\Users\13691\.trae-cn\work\6a4debc110edcb943621702e\rebuild.tcl
+# Command line: vivado.exe -mode batch -source synth/vivado/run_synth.tcl
 # Log file: C:/rvp_proj/vivado.log
 # Journal file: C:/rvp_proj\vivado.jou
 #-----------------------------------------------------------
