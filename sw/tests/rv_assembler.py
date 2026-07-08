@@ -77,7 +77,7 @@ def enc_b_type(imm, rs2, rs1, funct3, opcode=0x63):
            ((funct3 & 0x7) << 12) | (b4_1 << 8) | (b11 << 7) | (opcode & 0x7F)
 
 def enc_u_type(imm, rd, opcode):
-    return (((imm >> 12) & 0xFFFFF) << 12) | ((rd & 0x1F) << 7) | (opcode & 0x7F)
+    return ((imm & 0xFFFFF) << 12) | ((rd & 0x1F) << 7) | (opcode & 0x7F)
 
 def enc_j_type(imm, rd, opcode=0x6F):
     imm = imm & 0x1FFFFF  # 21位
