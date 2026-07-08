@@ -1,28 +1,37 @@
-# 临时文件
-~$*.docx
-~$*.doc
-
-# 提取中间文件
-document/nexys 4 ddr/extracted/
-
-# RISC-V 工具链（太大，各自安装）
-riscv-toolchain.zip
-
-# 构建产物
-build/
-work/
-*.vcd
-*.wlf
+# ModelSim
+modelsim.ini
 transcript
-
-# ModelSim 仿真产物
+vsim.wlf
+*.wlf
+*.vstf
+*.vcd
+work/
 tb/work/
-tb/vsim.wlf
-tb/transcript
-tb/wlft*
 
-# TRAE 工具临时目录
-.trae-html-share-packages/
+# Python
+__pycache__/
+*.pyc
+*.pyo
 
-# Vivado 综合产物
-synth/vivado/*.zip
+# Vivado
+*.jou
+*.log
+*.pb
+*.str
+*.xpe
+.Xil/
+build/vivado/.Xil/
+build/vivado/rvp_nexys4.runs/
+build/vivado/rvp_nexys4.hw/
+build/vivado/rvp_nexys4.cache/
+build/vivado/rvp_nexys4.ip_user_files/
+
+build/vivado/usage_statistics_*
+
+# Temp
+document/temp/
+document/log/*.log
+
+# OS
+Thumbs.db
+.DS_Store
