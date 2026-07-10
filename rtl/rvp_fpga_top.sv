@@ -1,10 +1,11 @@
 // =============================================================================
-// rvp_fpga_top.sv — RVP FPGA 顶层封装（Nexys4 DDR）
+// rvp_fpga_top.sv - RVP FPGA 顶层封装（Nexys4 DDR）
 // =============================================================================
 // 功能：
 //   1. 端口名匹配 Nexys4 DDR 的 XDC 约束文件
-//   2. 内部例化 rvp_soc（片上系统）
-//   3. 添加七段数码管动态扫描模块，显示 PC 值低 32 位（8 位十六进制）
+//   2. 内部例化 rvp_soc（片上系统，含 I-Cache）
+//   3. 时钟分频：100MHz → 25MHz（保证 5 级流水线时序余量）
+//   4. 七段数码管动态扫描，显示 PC 值低 32 位（8 位十六进制）
 //
 // Nexys4 DDR 引脚分配（与 rvp_nexys4.xdc 一致）：
 //   clk        : E3   (100 MHz 晶体振荡器)
@@ -15,6 +16,11 @@
 //   btn_center : N17  (中心按钮，高有效)
 //   seg_ca~cg  : 七段数码管段（共阳极，active low）
 //   an[7:0]    : 七段数码管位选（active low）
+//
+// 时钟方案：
+//   板载 100MHz → 4 分频 → 25MHz 给 SoC
+//   25MHz 周期 40ns，远大于关键路径 19.951ns，时序余量充足
+//   数码管扫描电路仍用 100MHz，避免跨时钟域
 // =============================================================================
 
 module rvp_fpga_top (
@@ -35,17 +41,21 @@ module rvp_fpga_top (
 );
 
   // ===========================================================================
-  // 时钟分频：100MHz → 50MHz
-  // 5级流水线组合逻辑路径较长，100MHz 时序违例
-  // 用 T 触发器二分频，生成 50MHz 时钟给 SoC
+  // 时钟分频：100MHz → 25MHz（4 分频）
+  // 使用 2 位计数器，取最高位作为 SoC 时钟
+  // clk_cnt[1] 的周期 = 4 × 100MHz 周期 = 40ns = 25MHz，占空比 50%
   // ===========================================================================
-  logic clk_div2;
+  logic [1:0] clk_cnt;
+  logic       clk_soc;  // 25MHz SoC 时钟
+
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n)
-      clk_div2 <= 1'b0;
+      clk_cnt <= 2'b0;
     else
-      clk_div2 <= ~clk_div2;
+      clk_cnt <= clk_cnt + 2'b1;
   end
+
+  assign clk_soc = clk_cnt[1];  // 25MHz, 50% duty cycle
 
   // ===========================================================================
   // SoC 实例化
@@ -53,12 +63,13 @@ module rvp_fpga_top (
   logic [31:0] pc_dbg;
 
   // btn_center 目前未使用
-  // 用 always_comb + (* keep *) 确保 Vivado 不会优化掉此信号
   (* keep *) logic _unused_btn;
   always_comb _unused_btn = btn_center;
 
-  rvp_soc soc (
-    .clk_i     (clk_div2),
+  rvp_soc #(
+    .CLK_FREQ (25_000_000)  // 25 MHz
+  ) soc (
+    .clk_i     (clk_soc),
     .rst_ni    (rst_n),
     .uart_tx_o (uart_tx),
     .led_o     (led),
@@ -74,7 +85,7 @@ module rvp_fpga_top (
   // 利用视觉暂留实现稳定显示
 
   // 分频计数器：100 MHz → 1 kHz
-  logic [16:0] refresh_cnt;  // 2^17 = 131072 > 100000
+  logic [16:0] refresh_cnt;
   logic        refresh_en;
 
   always_ff @(posedge clk) begin
@@ -83,7 +94,6 @@ module rvp_fpga_top (
     end else begin
       if (refresh_cnt == 17'd99_999) begin
         refresh_cnt <= 17'd0;
-        // refresh_en 在下一个周期生效
       end else begin
         refresh_cnt <= refresh_cnt + 17'd1;
       end
@@ -108,14 +118,14 @@ module rvp_fpga_top (
 
   always_comb begin
     unique case (digit_sel)
-      3'd0: hex_digit = pc_dbg[3:0];    // 最低位
+      3'd0: hex_digit = pc_dbg[3:0];
       3'd1: hex_digit = pc_dbg[7:4];
       3'd2: hex_digit = pc_dbg[11:8];
       3'd3: hex_digit = pc_dbg[15:12];
       3'd4: hex_digit = pc_dbg[19:16];
       3'd5: hex_digit = pc_dbg[23:20];
       3'd6: hex_digit = pc_dbg[27:24];
-      3'd7: hex_digit = pc_dbg[31:28];  // 最高位
+      3'd7: hex_digit = pc_dbg[31:28];
     endcase
   end
 
@@ -125,22 +135,22 @@ module rvp_fpga_top (
 
   always_comb begin
     unique case (hex_digit)
-      4'h0: seg = 7'b1000000;  // 0:  亮 A,B,C,D,E,F
-      4'h1: seg = 7'b1111001;  // 1:  亮 B,C
-      4'h2: seg = 7'b0100100;  // 2:  亮 A,B,D,E,G
-      4'h3: seg = 7'b0110000;  // 3:  亮 A,B,C,D,G
-      4'h4: seg = 7'b0011001;  // 4:  亮 B,C,F,G
-      4'h5: seg = 7'b0010010;  // 5:  亮 A,C,D,F,G
-      4'h6: seg = 7'b0000010;  // 6:  亮 A,C,D,E,F,G
-      4'h7: seg = 7'b1111000;  // 7:  亮 A,B,C
-      4'h8: seg = 7'b0000000;  // 8:  全亮
-      4'h9: seg = 7'b0010000;  // 9:  亮 A,B,C,D,F,G
-      4'hA: seg = 7'b0001000;  // A:  亮 A,B,C,E,F,G
-      4'hB: seg = 7'b0000011;  // b:  亮 C,D,E,F,G
-      4'hC: seg = 7'b1000110;  // C:  亮 A,D,E,F
-      4'hD: seg = 7'b0100001;  // d:  亮 B,C,D,E,G
-      4'hE: seg = 7'b0000110;  // E:  亮 A,D,E,F,G
-      4'hF: seg = 7'b0001110;  // F:  亮 A,E,F,G
+      4'h0: seg = 7'b1000000;
+      4'h1: seg = 7'b1111001;
+      4'h2: seg = 7'b0100100;
+      4'h3: seg = 7'b0110000;
+      4'h4: seg = 7'b0011001;
+      4'h5: seg = 7'b0010010;
+      4'h6: seg = 7'b0000010;
+      4'h7: seg = 7'b1111000;
+      4'h8: seg = 7'b0000000;
+      4'h9: seg = 7'b0010000;
+      4'hA: seg = 7'b0001000;
+      4'hB: seg = 7'b0000011;
+      4'hC: seg = 7'b1000110;
+      4'hD: seg = 7'b0100001;
+      4'hE: seg = 7'b0000110;
+      4'hF: seg = 7'b0001110;
     endcase
   end
 
@@ -155,8 +165,8 @@ module rvp_fpga_top (
 
   // 位选信号输出（active low，当前位为 0，其他为 1）
   always_comb begin
-    an = 8'b11111111;  // 默认全部不选
-    an[digit_sel] = 1'b0;  // 选中当前位
+    an = 8'b11111111;
+    an[digit_sel] = 1'b0;
   end
 
 endmodule : rvp_fpga_top

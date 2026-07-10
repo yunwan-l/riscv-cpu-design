@@ -1,12 +1,12 @@
 // =============================================================================
-// tb_multdiv.sv — M 扩展乘除法单元测试
+// tb_multdiv.sv — M 扩展乘除法单元测试（多周期版本）
 // =============================================================================
 // 测试内容：
-//   1. MUL  — 有符号乘法低 32 位
+//   1. MUL  — 有符号乘法低 32 位（1 周期）
 //   2. MULH — 有符号×有符号高 32 位
 //   3. MULHSU — 有符号×无符号高 32 位
 //   4. MULHU — 无符号×无符号高 32 位
-//   5. DIV  — 有符号除法（含除零、溢出）
+//   5. DIV  — 有符号除法（含除零、溢出，32 周期）
 //   6. DIVU — 无符号除法（含除零）
 //   7. REM  — 有符号取余（含除零、溢出）
 //   8. REMU — 无符号取余（含除零）
@@ -18,28 +18,48 @@ module tb_multdiv;
 
   import rvp_pkg::*;
 
-  logic [31:0]          a, b;
-  logic [31:0]          result;
-  rvp_pkg::multdiv_op_e op;
+  logic                   clk = 0;
+  logic                   rst_n = 0;
+  logic                   flush = 0;
+  logic                   start;
+  rvp_pkg::multdiv_op_e   op;
+  logic [31:0]            a, b;
+  logic [31:0]            result;
+  logic                   done;
+  logic                   idle;
 
   int errors = 0;
   int tests  = 0;
 
+  // 时钟生成
+  always #5 clk = ~clk;
+
   rvp_multdiv dut (
-    .op_i       (op),
-    .operand_a_i(a),
-    .operand_b_i(b),
-    .result_o   (result)
+    .clk_i       (clk),
+    .rst_ni      (rst_n),
+    .flush_i     (flush),
+    .start_i     (start),
+    .op_i        (op),
+    .operand_a_i (a),
+    .operand_b_i (b),
+    .result_o    (result),
+    .done_o      (done),
+    .idle_o      (idle)
   );
 
-  // 设置输入 + 等待组合逻辑稳定 + 检查结果
+  // 设置输入 + 启动 + 等待完成 + 检查结果
   task automatic test(input rvp_pkg::multdiv_op_e t_op,
                       input [31:0] t_a, input [31:0] t_b,
                       input [31:0] exp, input [255:0] name);
     op = t_op;
     a  = t_a;
     b  = t_b;
-    #1;  // 等待 always_comb 稳定
+    start = 1'b1;
+    @(posedge clk);  // 启动
+    start = 1'b0;
+    // 等待完成
+    while (!done) @(posedge clk);
+    // done 时的 result 有效
     tests++;
     if (result !== exp) begin
       $display("  [FAIL] %0s : got %h, exp %h", name, result, exp);
@@ -47,12 +67,25 @@ module tb_multdiv;
     end else begin
       $display("  [ OK ] %0s : %h", name, result);
     end
+    @(posedge clk);  // 等待回到 IDLE
   endtask
 
   initial begin
     $display("==========================================================");
-    $display(" MultDiv (M-Extension) Testbench Start");
+    $display(" MultDiv (M-Extension, Multi-Cycle) Testbench Start");
     $display("==========================================================");
+
+    start = 0;
+    op = MD_MUL;
+    a = 0;
+    b = 0;
+
+    // 复位
+    rst_n = 0;
+    @(posedge clk);
+    @(posedge clk);
+    rst_n = 1;
+    @(posedge clk);
 
     // ===== 1. MUL =====
     $display("--- MUL (signed x signed, low 32 bits) ---");
@@ -108,7 +141,7 @@ module tb_multdiv;
     // ===== 8. REMU =====
     $display("--- REMU (unsigned remainder) ---");
     test(MD_REMU, 32'd100,       32'd7,  32'd2,        "100%7");
-    test(MD_REMU, 32'h80000000,  32'd3,  32'd2,        "0x80000000%3");
+    test(MD_REMU, 32'h80000000,  32'd3,  32'h2,        "0x80000000%3");
     test(MD_REMU, 32'hFFFFFFFF,  32'd16, 32'h0000000F, "0xFFFFFFFF%16");
     test(MD_REMU, 32'd10,        32'd0,  32'd10,       "10%0 = 10");
 

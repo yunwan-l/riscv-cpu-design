@@ -159,7 +159,7 @@ module tb_core_pipeline;
     // ??????????????????
 
         #1; // wait for memory init
-        $readmemh("E:/rvp_nexys/sw/tests/pipeline_test_words.hex", dut.instr_mem.mem);
+        $readmemh("../sw/tests/pipeline_test_words.hex", dut.icache.backing_mem.mem);
 
 
 

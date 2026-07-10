@@ -109,7 +109,7 @@ module tb_perf;
 
       // --- 加载 hex 文件 ---
       hex_path = {hex_dir, "/", hex_file};
-      $readmemh(hex_path, dut.cpu.instr_mem.mem);
+      $readmemh(hex_path, dut.cpu.icache.backing_mem.mem);
 
       // --- 清除数据 RAM（避免上一个 benchmark 残留数据干扰） ---
       for (i = 0; i < 2048; i = i + 1)
@@ -261,7 +261,7 @@ module tb_perf;
 
     // --- 获取 hex 文件目录 ---
     if (!$value$plusargs("HEX_DIR=%s", hex_dir))
-      hex_dir = ".";
+      hex_dir = "../sw/tests";
 
     $display("");
     $display("############################################################");

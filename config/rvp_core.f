@@ -48,15 +48,21 @@ rtl/core/rvp_multdiv.sv
 rtl/core/rvp_pipeline_regs.sv
 
 // ============================================================================
-// 3. Memory Modules (rtl/core/ versions — not rtl/mem/)
-//    rvp_core_pipeline instantiates rvp_instr_mem
-//    rvp_soc instantiates rvp_data_mem
+// 3. Memory Modules
+//    rvp_instr_mem: backing store for I-Cache (BRAM with $readmemh init)
+//    rvp_data_mem:  data RAM (async read, sync write, sub-word support)
 // ============================================================================
 rtl/core/rvp_instr_mem.sv
 rtl/core/rvp_data_mem.sv
 
 // ============================================================================
-// 4. Core Top (5-stage pipeline CPU)
+// 3b. I-Cache (Direct-mapped instruction cache)
+//     rvp_core_pipeline instantiates rvp_icache, which wraps rvp_instr_mem
+// ============================================================================
+rtl/cache/rvp_icache.sv
+
+// ============================================================================
+// 4. Core Top (5-stage pipeline CPU, with I-Cache)
 // ============================================================================
 rtl/core/rvp_core_pipeline.sv
 

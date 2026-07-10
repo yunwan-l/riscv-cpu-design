@@ -1,27 +1,28 @@
 // =============================================================================
-// rvp_soc.sv — RVP 片上系统顶层
+// rvp_soc.sv - RVP 片上系统顶层
 // =============================================================================
-// 把 CPU 核心 + 数据 RAM + 外设（UART/GPIO/Timer）通过总线互连组成完整 SoC。
+// 把 CPU 核心（含 I-Cache）+ 数据 RAM + 外设（UART/GPIO/Timer）通过总线互连
+// 组成完整 SoC。
 //
 // 地址映射：
-//   0x0000_0000 ~ 0x0000_FFFF  Data RAM   (64KB, 16K 字)
+//   0x0000_0000 ~ 0x0000_FFFF  Data RAM   (8KB, 2K 字)
 //   0x1000_0000 ~ 0x1000_FFFF  UART       (TXDATA/TXSTAT)
 //   0x1001_0000 ~ 0x1001_FFFF  GPIO       (OUTPUT/INPUT)
 //   0x1002_0000 ~ 0x1002_FFFF  Timer      (COUNT/CTRL)
+//   0x1003_0000 ~ 0x1003_FFFF  性能计数器  (cycle/inst/stall/flush/branch/icache_hit/icache_miss)
 //
 // 总线协议：简单同步写 + 异步读（和 data_mem 一致）
 //   - 外设建议用 lw/sw 访问（字对齐）
 //   - UART 的 TXDATA 可用 sb（只取低 8 位）
 //
-// FPGA 引脚：
-//   clk_i     : 板载时钟（NEXYS4 为 100MHz）
-//   rst_ni    : 复位按钮（低有效）
-//   uart_tx_o : 串口发送（接 USB-UART 的 TXD）
-//   led_o     : LED 灯
-//   sw_i      : 拨码开关
+// 参数：
+//   CLK_FREQ : SoC 时钟频率（Hz），用于 UART 波特率分频
+//              FPGA 上为 25MHz，仿真可为 50MHz 或 100MHz
 // =============================================================================
 
-module rvp_soc (
+module rvp_soc #(
+  parameter int CLK_FREQ = 25_000_000  // 25 MHz (FPGA 默认)
+) (
   input  logic        clk_i,
   input  logic        rst_ni,
 
@@ -52,6 +53,7 @@ module rvp_soc (
   // 性能计数器信号（CPU 内部统计，SoC 总线读取）
   // =========================================================================
   logic [31:0] perf_cycle, perf_inst, perf_stall, perf_flush, perf_branch;
+  logic [31:0] icache_hit_count, icache_miss_count;
 
   // =========================================================================
   // 地址译码：根据地址高 16 位选择外设
@@ -89,20 +91,24 @@ module rvp_soc (
   //   0x10030008: stall_count
   //   0x1003000C: flush_count
   //   0x10030010: branch_count
+  //   0x10030014: icache_hit_count
+  //   0x10030018: icache_miss_count
   // -------------------------------------------------------------------------
   always_comb begin
     unique case (dbus_addr[6:2])
-      5'd0:    perf_rdata = perf_cycle;   // 0x00
-      5'd1:    perf_rdata = perf_inst;    // 0x04
-      5'd2:    perf_rdata = perf_stall;   // 0x08
-      5'd3:    perf_rdata = perf_flush;   // 0x0C
-      5'd4:    perf_rdata = perf_branch;  // 0x10
+      5'd0:    perf_rdata = perf_cycle;         // 0x00
+      5'd1:    perf_rdata = perf_inst;          // 0x04
+      5'd2:    perf_rdata = perf_stall;         // 0x08
+      5'd3:    perf_rdata = perf_flush;         // 0x0C
+      5'd4:    perf_rdata = perf_branch;        // 0x10
+      5'd5:    perf_rdata = icache_hit_count;   // 0x14
+      5'd6:    perf_rdata = icache_miss_count;  // 0x18
       default: perf_rdata = 32'b0;
     endcase
   end
 
   // =========================================================================
-  // CPU 核心
+  // CPU 核心（含 I-Cache）
   // =========================================================================
   rvp_core_pipeline cpu (
     .clk_i          (clk_i),
@@ -121,7 +127,9 @@ module rvp_soc (
     .perf_inst_o    (perf_inst),
     .perf_stall_o   (perf_stall),
     .perf_flush_o   (perf_flush),
-    .perf_branch_o  (perf_branch)
+    .perf_branch_o  (perf_branch),
+    .icache_hit_o   (icache_hit_count),
+    .icache_miss_o  (icache_miss_count)
   );
 
   // =========================================================================
@@ -139,9 +147,12 @@ module rvp_soc (
   );
 
   // =========================================================================
-  // UART 发送器
+  // UART 发送器（波特率根据 CLK_FREQ 自动计算分频系数）
   // =========================================================================
-  rvp_uart uart (
+  rvp_uart #(
+    .CLK_FREQ  (CLK_FREQ),
+    .BAUD_RATE (115_200)
+  ) uart (
     .clk_i   (clk_i),
     .rst_ni  (rst_ni),
     .addr_i  (dbus_addr[3:0]),

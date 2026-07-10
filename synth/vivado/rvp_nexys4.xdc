@@ -17,18 +17,18 @@
 
 ## ---------------------------------------------------------------------------
 ## Clock signal - 100 MHz crystal oscillator on pin E3
-## 板载晶振 100MHz，通过 T 触发器二分频得到 50MHz 给 SoC
+## 板载晶振 100MHz，通过 2 位计数器 4 分频得到 25MHz 给 SoC
 ## ---------------------------------------------------------------------------
 set_property -dict { PACKAGE_PIN E3    IOSTANDARD LVCMOS33 } [get_ports { clk }];
 create_clock -add -name sys_clk_pin -period 10.000 -waveform {0 5} [get_ports { clk }];
 
-## 分频时钟约束：clk_div2 = clk / 2 = 50MHz (20ns period)
-## 用通配符匹配寄存器路径，避免层次名不匹配
-create_generated_clock -name clk_div2 -source [get_ports { clk }] -divide_by 2 [get_pins -hier -filter {NAME =~ *clk_div2_reg/Q}]
+## 分频时钟约束：clk_soc = clk / 4 = 25MHz (40ns period)
+## clk_cnt[1] 寄存器的 Q 引脚输出即为 25MHz 时钟
+create_generated_clock -name clk_soc -source [get_ports { clk }] -divide_by 4 [get_pins -hier -filter {NAME =~ *clk_cnt_reg[1]/Q}]
 
-## 跨时钟域约束：SoC(50MHz) → 数码管(100MHz)，pc_dbg 是慢变信号，设 false path
-set_false_path -from [get_clocks clk_div2] -to [get_clocks sys_clk_pin]
-set_false_path -from [get_clocks sys_clk_pin] -to [get_clocks clk_div2]
+## 跨时钟域约束：SoC(25MHz) → 数码管(100MHz)，pc_dbg 是慢变信号，设 false path
+set_false_path -from [get_clocks clk_soc] -to [get_clocks sys_clk_pin]
+set_false_path -from [get_clocks sys_clk_pin] -to [get_clocks clk_soc]
 
 ## ---------------------------------------------------------------------------
 ## Reset - CPU reset button (active-low on the board)

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RVP处理器 FPGA板级验证测试指南</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #1a1d27;
+    --bg3: #242833;
+    --ink: #e4e7ee;
+    --muted: #8b909e;
+    --accent: #5b9cf6;
+    --accent2: #4ec9b0;
+    --warn: #f0a050;
+    --pass: #4ec9b0;
+    --fail: #e06c75;
+    --rule: #2d3140;
+    --code-bg: #1e2230;
+    --led-on: #4ec9b0;
+    --led-off: #2a2d38;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  h1 {
+    font-size: 1.8rem; font-weight: 700; margin-bottom: 0.3rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem; }
+  h2 {
+    font-size: 1.3rem; font-weight: 600; margin-top: 2.5rem; margin-bottom: 1rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--rule);
+    color: var(--accent);
+  }
+  h3 {
+    font-size: 1.05rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.6rem;
+    color: var(--accent2);
+  }
+  p { margin-bottom: 0.8rem; }
+  strong { color: var(--ink); font-weight: 600; }
+  code {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    background: var(--code-bg); padding: 2px 6px; border-radius: 3px;
+    font-size: 0.88em; color: var(--accent2);
+  }
+  pre {
+    background: var(--code-bg); padding: 1rem; border-radius: 6px;
+    overflow-x: auto; margin: 0.8rem 0; font-size: 0.85em;
+    border: 1px solid var(--rule);
+  }
+  pre code { background: none; padding: 0; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th {
+    background: var(--bg3); padding: 0.6rem 0.8rem; text-align: left;
+    font-weight: 600; color: var(--accent); border-bottom: 2px solid var(--rule);
+  }
+  td {
+    padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--rule);
+  }
+  tr:hover td { background: var(--bg2); }
+  .test-card {
+    background: var(--bg2); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 1.5rem; margin: 1.5rem 0;
+  }
+  .test-header {
+    display: flex; align-items: center; gap: 0.8rem; margin-bottom: 1rem;
+  }
+  .test-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.75rem; font-weight: 600; background: var(--accent);
+    color: var(--bg);
+  }
+  .test-title { font-size: 1.15rem; font-weight: 600; }
+  .led-display {
+    display: inline-flex; gap: 4px; margin: 0.5rem 0; padding: 8px 10px;
+    background: var(--bg3); border-radius: 4px;
+  }
+  .led {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--led-off); border: 1px solid #3a3d48;
+    transition: all 0.2s;
+  }
+  .led.on { background: var(--led-on); box-shadow: 0 0 6px var(--led-on); }
+  .led-label { font-size: 0.75rem; color: var(--muted); margin-left: 0.5rem; }
+  .pass-badge { color: var(--pass); font-weight: 600; }
+  .fail-badge { color: var(--fail); font-weight: 600; }
+  .info-box {
+    background: var(--bg3); border-left: 3px solid var(--accent);
+    padding: 0.8rem 1rem; border-radius: 0 4px 4px 0; margin: 1rem 0;
+  }
+  .warn-box {
+    background: var(--bg3); border-left: 3px solid var(--warn);
+    padding: 0.8rem 1rem; border-radius: 0 4px 4px 0; margin: 1rem 0;
+  }
+  .hex-display {
+    font-family: 'Cascadia Code', monospace; font-size: 1.3rem;
+    color: var(--accent2); letter-spacing: 2px; font-weight: 600;
+  }
+  .step-list { counter-reset: step; list-style: none; padding-left: 0; }
+  .step-list li {
+    counter-increment: step; position: relative; padding-left: 2.2rem;
+    margin-bottom: 0.5rem;
+  }
+  .step-list li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 1.6rem; height: 1.6rem; border-radius: 50%;
+    background: var(--accent); color: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 700;
+  }
+  .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>RVP处理器 FPGA板级验证测试指南</h1>
+<p class="subtitle">NEXYS4 DDR | Artix-7 XC7A100T | 25MHz | RV32IM 5级流水线</p>
+
+<div class="info-box">
+<strong>使用方法：</strong>运行 <code>switch_firmware.bat</code>，选择测试编号，脚本自动将对应固件复制为 <code>firmware.hex</code>。然后在 Vivado 中依次点击 <strong>Run Synthesis → Run Implementation → Generate Bitstream</strong>，最后通过 Hardware Manager 烧录到板子。
+</div>
+
+<div class="warn-box">
+<strong>重要：</strong>每次切换固件<strong>必须重新综合</strong>，因为固件数据在综合阶段通过 <code>$readmemh</code> 烧入 BRAM。仅重新生成比特流是不够的。
+</div>
+
+<h2>测试总览</h2>
+
+<table>
+<thead>
+<tr><th>编号</th><th>固件文件</th><th>测试内容</th><th>验证的CPU功能</th><th>预期LED表现</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>firmware_blink.hex</td><td>LED全闪</td><td>基础运行、GPIO输出</td><td>16个LED全亮全灭闪烁(~3Hz)</td></tr>
+<tr><td>2</td><td>firmware_pc_seq.hex</td><td>PC顺序增长</td><td>PC+4递增、ADDI、SW、BNE、JAL</td><td>LED二进制计数递增(0x0001→0x0002→...)</td></tr>
+<tr><td>3</td><td>firmware_forward.hex</td><td>流水线前递</td><td>MEM→EX前递、连续依赖链</td><td>LED11闪烁(0x0800 ↔ 0x0000)</td></tr>
+<tr><td>4</td><td>firmware_loaduse.hex</td><td>Load-Use冒险</td><td>冒险检测、流水线停顿1拍</td><td>LED交替(0x00AA ↔ 0x0000)</td></tr>
+<tr><td>5</td><td>firmware_branch.hex</td><td>分支跳转</td><td>BNE/BEQ/BLT条件分支、JAL</td><td>LED交替(0x000F ↔ 0x00F0)</td></tr>
+<tr><td>6</td><td>firmware_alu.hex</td><td>ALU全运算</td><td>ADD/SUB/AND/OR/XOR/SLL/SRL/SRA</td><td>8种结果依次显示(~160ms each)</td></tr>
+<tr><td>7</td><td>firmware_mem.hex</td><td>内存读写</td><td>SB/SH/SW + LB/LBU/LH/LHU/LW</td><td>5种内存操作结果依次显示</td></tr>
+<tr><td>8</td><td>firmware_muldiv.hex</td><td>乘除法M扩展</td><td>MUL/DIV/REM/DIVU多周期停顿</td><td>5种乘除结果依次显示</td></tr>
+<tr><td>9</td><td>firmware_pipeline.hex</td><td>流水线综合演示</td><td>前递+冒险+分支冲刷综合</td><td>LED循环(0x0001→0x0002→0x0003→0x0004)</td></tr>
+</tbody>
+</table>
+
+<!-- ==================== Test 1 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试1</span>
+<span class="test-title">LED全闪（已验证通过）</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_blink.hex</code> — 14条指令</p>
+<h3>验证内容</h3>
+<p>验证CPU基础运行能力：取指、译码、执行、访存、写回全流程，GPIO输出正确驱动LED。</p>
+<h3>预期表现</h3>
+<p>16个LED全部一起亮灭闪烁，频率约3Hz。数码管显示<code>000000?8</code>（PC在延迟循环地址间跳动，末位8是视觉叠加效应）。</p>
+<div class="led-display">
+<div class="led on"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<div class="led on"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<div class="led on"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<div class="led on"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<span class="led-label">全部闪烁 ~3Hz</span>
+</div>
+</div>
+
+<!-- ==================== Test 2 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试2</span>
+<span class="test-title">PC顺序增长</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_pc_seq.hex</code> — 8条指令</p>
+<h3>验证内容</h3>
+<p>验证PC按<strong>PC+4</strong>正确递增。程序循环执行 <code>addi x6, x6, 1</code>（计数器+1），将计数器值输出到LED。如果PC递增逻辑错误，计数器不会正常递增。</p>
+<h3>程序流程</h3>
+<pre><code>0x000: lui  x5, 0x10010    # GPIO基地址
+0x004: addi x6, x0, 0      # 计数器=0
+0x008: addi x6, x6, 1      # 计数器++   ← 循环体
+0x00C: sw   x6, 0(x5)      # LED = 计数器
+0x010: lui  x10, 0x100     # 延迟循环开始
+0x014: addi x10, x10, -1   # x10--
+0x018: bne  x10, x0, -4    # 延迟循环
+0x01C: jal  x0, -20        # 跳回0x008</code></pre>
+<h3>预期LED表现</h3>
+<p>LED显示二进制计数递增：<code>0x0001 → 0x0002 → 0x0003 → ... → 0x000F → 0x0010 → ...</code>，每个值保持约160ms，频率约6Hz。计数器持续递增，证明PC在循环体内正确递增。</p>
+<div class="led-display">
+<div class="led on"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<span class="led-label">0x0001 (L0亮)</span>
+</div>
+<p>然后变化为：</p>
+<div class="led-display">
+<div class="led"></div><div class="led on"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<span class="led-label">0x0002 (L1亮)</span>
+</div>
+<p>持续递增...直到所有LED滚动变化。</p>
+</div>
+
+<!-- ==================== Test 3 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试3</span>
+<span class="test-title">流水线前递验证</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_forward.hex</code> — 19条指令</p>
+<h3>验证内容</h3>
+<p>8条<strong>连续数据依赖</strong>的指令链，每条指令使用上一条的结果。在5级流水线中，第N+1条指令在EX级需要第N条指令的结果，而第N条指令此时在MEM级，必须通过<strong>MEM→EX前递</strong>通路获取数据。</p>
+<h3>程序流程</h3>
+<pre><code>addi x1, x0, 1     # x1 = 1
+addi x2, x1, 1     # x2 = 2  (前递x1: MEM→EX)
+addi x3, x2, 1     # x3 = 3  (前递x2: MEM→EX)
+addi x4, x3, 1     # x4 = 4  (前递x3: MEM→EX)
+addi x6, x4, 1     # x6 = 5  (前递x4: MEM→EX)
+addi x7, x6, 1     # x7 = 6  (前递x6: MEM→EX)
+addi x8, x7, 1     # x8 = 7  (前递x7: MEM→EX)
+addi x9, x8, 1     # x9 = 8  (前递x8: MEM→EX)
+slli x10, x9, 8   # x10 = 8<<8 = 0x0800
+sw   x10, 0(x5)   # LED = 0x0800</code></pre>
+<h3>预期LED表现</h3>
+<p><strong>通过：</strong>LED11闪烁（<code>0x0800</code> ↔ <code>0x0000</code>，约3Hz），表示前递链全部正确，x9=8。</p>
+<div class="led-display">
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led on"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<span class="led-label">0x0800 (L11亮) → 闪烁</span>
+</div>
+<p><strong>失败：</strong>如果前递通路断开，某条addi读到旧值（0），后续全部错误，LED显示的值将不是0x0800。</p>
+</div>
+
+<!-- ==================== Test 4 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试4</span>
+<span class="test-title">Load-Use冒险验证</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_loaduse.hex</code> — 14条指令</p>
+<h3>验证内容</h3>
+<p>测试<strong>Load-Use冒险检测</strong>和<strong>流水线停顿</strong>。程序向RAM地址0写入<code>0xAA</code>，然后<code>lw</code>读取，<strong>立即</strong>在下一步使用（<code>addi x3, x2, 0</code>）。由于lw的数据在MEM级才返回，而后一条指令在EX级就需要，必须停顿1拍。</p>
+<h3>程序流程</h3>
+<pre><code>addi x1, x0, 0xAA   # x1 = 0xAA
+sw   x1, 0(x0)       # RAM[0] = 0xAA
+lw   x2, 0(x0)       # x2 = RAM[0] (load, 数据MEM级才出)
+addi x3, x2, 0       # x3 = x2  (Load-Use! 需停顿1拍)
+sw   x3, 0(x5)       # LED = x3</code></pre>
+<h3>预期LED表现</h3>
+<p><strong>通过：</strong>LED交替显示 <code>0x00AA</code> 和 <code>0x0000</code>（约3Hz闪烁），表示冒险停顿正确，x3=0xAA。</p>
+<div class="led-display">
+<div class="led"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<div class="led"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<span class="led-label">0x00AA (L1,L2,L3,L5,L6,L7亮) → 闪烁</span>
+</div>
+<p><strong>失败：</strong>如果冒险检测失效，addi读到的是x2的旧值（0），LED显示<code>0x0000</code>（全灭不闪）或错误值。</p>
+</div>
+
+<!-- ==================== Test 5 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试5</span>
+<span class="test-title">分支跳转验证</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_branch.hex</code> — 21条指令</p>
+<h3>验证内容</h3>
+<p>测试3种条件分支的正确性：BNE（不等于跳转）、BEQ（等于跳转，应不跳转）、BLT（小于跳转）。如果分支逻辑正确，错误路径代码被跳过，LED交替显示两种成功模式。</p>
+<h3>程序流程</h3>
+<pre><code>addi x1, x0, 5     # x1 = 5
+addi x2, x0, 3     # x2 = 3
+
+bne  x1, x2, +12   # 5≠3 → 跳转(应跳)  → 跳过错误代码
+addi x6, x0, 0xFF  # (不应执行)
+sw   x6, 0(x5)     # (不应执行)
+
+beq  x1, x2, +12   # 5≠3 → 不跳(应不跳) → 继续
+blt  x2, x1, +12   # 3<5 → 跳转(应跳)   → 跳过错误代码
+addi x6, x0, 0xF0  # (不应执行)
+sw   x6, 0(x5)     # (不应执行)
+
+addi x6, x0, 0x0F  # 成功! x6 = 0x000F
+sw   x6, 0(x5)     # LED = 0x000F</code></pre>
+<h3>预期LED表现</h3>
+<p><strong>通过：</strong>LED在 <code>0x000F</code>（低4位亮）和 <code>0x00F0</code>（高4位亮）之间交替，约3Hz。</p>
+<div class="led-display">
+<div class="led on"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<span class="led-label">0x000F (L0-L3亮)</span>
+</div>
+<p>然后切换为：</p>
+<div class="led-display">
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led on"></div><div class="led on"></div><div class="led on"></div><div class="led on"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<span class="led-label">0x00F0 (L4-L7亮)</span>
+</div>
+<p><strong>失败：</strong>如果分支方向错误，错误代码会执行，LED可能出现<code>0x00FF</code>或异常模式。</p>
+</div>
+
+<!-- ==================== Test 6 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试6</span>
+<span class="test-title">ALU全运算验证</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_alu.hex</code> — 44条指令</p>
+<h3>验证内容</h3>
+<p>依次测试8种ALU运算，每种运算结果在LED上显示约160ms，用户可逐一核对。测试值：x1=0x0F, x2=0x03。</p>
+<h3>预期LED序列（每个~160ms）</h3>
+<table>
+<thead><tr><th>序号</th><th>运算</th><th>计算</th><th>结果</th><th>LED（16位）</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>ADD</td><td>0x0F + 0x03</td><td class="hex-display">0x0012</td><td>L1,L4亮</td></tr>
+<tr><td>2</td><td>SUB</td><td>0x0F - 0x03</td><td class="hex-display">0x000C</td><td>L2,L3亮</td></tr>
+<tr><td>3</td><td>AND</td><td>0x0F &amp; 0x03</td><td class="hex-display">0x0003</td><td>L0,L1亮</td></tr>
+<tr><td>4</td><td>OR</td><td>0x0F | 0x03</td><td class="hex-display">0x000F</td><td>L0-L3亮</td></tr>
+<tr><td>5</td><td>XOR</td><td>0x0F ^ 0x03</td><td class="hex-display">0x000C</td><td>L2,L3亮</td></tr>
+<tr><td>6</td><td>SLL</td><td>0x0F &lt;&lt; 3</td><td class="hex-display">0x0078</td><td>L3-L6亮</td></tr>
+<tr><td>7</td><td>SRL</td><td>0x0F &gt;&gt; 3</td><td class="hex-display">0x0001</td><td>L0亮</td></tr>
+<tr><td>8</td><td>SRA</td><td>0x0F &gt;&gt;&gt; 3</td><td class="hex-display">0x0001</td><td>L0亮</td></tr>
+</tbody>
+</table>
+<p>8种结果循环显示，总周期约1.3秒。如果ALU某运算错误，对应位置的LED值会不正确。</p>
+</div>
+
+<!-- ==================== Test 7 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试7</span>
+<span class="test-title">内存读写验证</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_mem.hex</code> — 37条指令</p>
+<h3>验证内容</h3>
+<p>测试不同宽度的内存读写操作，重点验证<strong>符号扩展</strong>和<strong>零扩展</strong>。RAM地址映射在0x0000_0000。</p>
+<h3>预期LED序列（每个~160ms）</h3>
+<table>
+<thead><tr><th>序号</th><th>操作</th><th>存储值</th><th>读取类型</th><th>结果</th><th>LED（16位）</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>SB+LB</td><td>0x80</td><td>符号扩展</td><td class="hex-display">0xFF80</td><td>L7,L15亮 + L2,L3亮</td></tr>
+<tr><td>2</td><td>SB+LBU</td><td>0x80</td><td>零扩展</td><td class="hex-display">0x0080</td><td>L7亮</td></tr>
+<tr><td>3</td><td>SH+LH</td><td>0x8080</td><td>符号扩展</td><td class="hex-display">0x8080</td><td>L7,L15亮</td></tr>
+<tr><td>4</td><td>SH+LHU</td><td>0x8080</td><td>零扩展</td><td class="hex-display">0x8080</td><td>L7,L15亮</td></tr>
+<tr><td>5</td><td>SW+LW</td><td>0x12345678</td><td>字读取</td><td class="hex-display">0x5678</td><td>L3-L6亮 + L9-L12亮</td></tr>
+</tbody>
+</table>
+<p><strong>关键验证点：</strong>测试1和测试2对比——同样的存储值0x80，LB返回<code>0xFF80</code>（符号扩展），LBU返回<code>0x0080</code>（零扩展）。如果符号扩展逻辑错误，这两个值会相同或都不正确。</p>
+</div>
+
+<!-- ==================== Test 8 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试8</span>
+<span class="test-title">乘除法M扩展验证</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_muldiv.hex</code> — 33条指令</p>
+<h3>验证内容</h3>
+<p>测试M扩展指令：MUL（乘法）、DIV（除法）、REM（取余）、DIVU（无符号除法）。除法指令触发<strong>多周期停顿</strong>（32周期迭代恢复除法），验证流水线停顿逻辑正确。</p>
+<h3>预期LED序列（每个~160ms）</h3>
+<table>
+<thead><tr><th>序号</th><th>运算</th><th>计算</th><th>结果</th><th>LED（16位）</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>MUL</td><td>7 × 6</td><td class="hex-display">0x002A</td><td>L1,L3,L5亮</td></tr>
+<tr><td>2</td><td>DIV</td><td>42 ÷ 6</td><td class="hex-display">0x0007</td><td>L0-L2亮</td></tr>
+<tr><td>3</td><td>REM</td><td>42 % 5</td><td class="hex-display">0x0002</td><td>L1亮</td></tr>
+<tr><td>4</td><td>MUL</td><td>256 × 256</td><td class="hex-display">0x0000</td><td>全灭(低16位溢出为0)</td></tr>
+<tr><td>5</td><td>DIVU</td><td>100 ÷ 7</td><td class="hex-display">0x000E</td><td>L1-L3亮</td></tr>
+</tbody>
+</table>
+<p><strong>验证点：</strong>测试2中DIV指令需要32个时钟周期完成（多周期迭代除法），期间流水线停顿。如果停顿逻辑错误，除法结果将不正确。</p>
+</div>
+
+<!-- ==================== Test 9 ==================== -->
+<div class="test-card">
+<div class="test-header">
+<span class="test-badge">测试9</span>
+<span class="test-title">流水线综合演示</span>
+</div>
+<h3>固件</h3>
+<p><code>firmware_pipeline.hex</code> — 29条指令</p>
+<h3>验证内容</h3>
+<p>综合演示流水线4个核心机制，每个阶段用不同方式计算同一个递增值，LED依次显示1→2→3→4循环。</p>
+<h3>4个阶段说明</h3>
+<table>
+<thead><tr><th>阶段</th><th>LED值</th><th>验证的流水线机制</th><th>关键指令</th></tr></thead>
+<tbody>
+<tr><td>1</td><td class="hex-display">0x0001</td><td>基础指令（无依赖）</td><td>addi x1, x0, 1 → sw</td></tr>
+<tr><td>2</td><td class="hex-display">0x0002</td><td>数据前递（MEM→EX）</td><td>addi x2,x0,1 → addi x2,x2,1</td></tr>
+<tr><td>3</td><td class="hex-display">0x0003</td><td>Load-Use冒险停顿</td><td>sw x3 → lw x4 → addi x4,x4,0</td></tr>
+<tr><td>4</td><td class="hex-display">0x0004</td><td>分支冲刷（BNE taken）</td><td>bne x1,x2,+8 → 跳过addi</td></tr>
+</tbody>
+</table>
+<h3>预期LED表现</h3>
+<p>LED循环显示 <code>0x0001 → 0x0002 → 0x0003 → 0x0004 → 0x0001 → ...</code>，每个值约160ms。4个值依次出现，证明流水线的<strong>前递、冒险停顿、分支冲刷</strong>全部正常工作。</p>
+<div class="led-display">
+<div class="led on"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<div class="led"></div><div class="led"></div><div class="led"></div><div class="led"></div>
+<span class="led-label">0x0001 → 0x0002 → 0x0003 → 0x0004 → 循环</span>
+</div>
+</div>
+
+<!-- ==================== 操作步骤 ==================== -->
+<h2>操作步骤</h2>
+
+<h3>首次使用</h3>
+<ol class="step-list">
+<li>确保 Vivado 项目已通过 <code>create_project.tcl</code> 创建完成</li>
+<li>将 <code>switch_firmware.bat</code> 和所有 <code>firmware_*.hex</code> 文件放在<strong>同一目录</strong>（即 <code>rvp_build</code> 目录）</li>
+<li>双击运行 <code>switch_firmware.bat</code></li>
+<li>选择要测试的固件编号（1-9）</li>
+<li>脚本自动将选中的固件复制为 <code>firmware.hex</code></li>
+<li>回到 Vivado，点击 <strong>Run Synthesis</strong>（等待综合完成）</li>
+<li>点击 <strong>Run Implementation</strong>（等待实现完成）</li>
+<li>点击 <strong>Generate Bitstream</strong>（等待比特流生成完成）</li>
+<li>打开 <strong>Hardware Manager</strong>，连接 NEXYS4 DDR，烧录比特流</li>
+<li>观察 LED 和数码管表现，与本文档的预期对比</li>
+</ol>
+
+<h3>切换测试</h3>
+<ol class="step-list">
+<li>重新运行 <code>switch_firmware.bat</code>，选择新的固件编号</li>
+<li>在 Vivado 中重新执行 <strong>Synthesis → Implementation → Bitstream</strong></li>
+<li>烧录新的比特流，观察表现</li>
+</ol>
+
+<div class="warn-box">
+<strong>常见问题：</strong>如果烧录后 LED 全灭或无反应，请检查：
+<br>1. <code>firmware.hex</code> 是否已更新（检查文件修改时间）
+<br>2. 是否重新执行了 <strong>Synthesis</strong>（不能只重新生成比特流）
+<br>3. 综合日志中是否有 <code>$readmemh</code> 成功加载的提示
+</div>
+
+<div class="footer">
+<p>RVP处理器 FPGA板级验证测试指南 | NEXYS4 DDR | 2026-07-09</p>
+<p>所有固件均经过编码验证，指令编码使用Python脚本自动生成并反汇编确认。</p>
+</div>
+
+</div>
+</body>
+</html>

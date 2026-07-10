@@ -2,10 +2,165 @@
 # Vivado v2018.3 (64-bit)
 # SW Build 2405991 on Thu Dec  6 23:38:27 MST 2018
 # IP Build 2404404 on Fri Dec  7 01:43:56 MST 2018
-# Start of session at: Wed Jul  8 17:00:41 2026
-# Process ID: 32264
-# Current directory: C:/rvp_proj
-# Command line: vivado.exe -mode batch -source C:\Users\13691\.trae-cn\work\6a4debc110edcb943621702e\rebuild.tcl
-# Log file: C:/rvp_proj/vivado.log
-# Journal file: C:/rvp_proj\vivado.jou
+# Start of session at: Thu Jul  9 18:02:57 2026
+# Process ID: 18596
+# Current directory: D:/大学资料/北邮/课程/阶段式程序设计2
+# Command line: vivado.exe -mode batch -source synth\vivado\run_direct.tcl
+# Log file: D:/大学资料/北邮/课程/阶段式程序设计2/vivado.log
+# Journal file: D:/大学资料/北邮/课程/阶段式程序设计2\vivado.jou
 #-----------------------------------------------------------
+source {synth\vivado\run_direct.tcl}
+# set script_dir   [file dirname [info script]]
+# set project_root [file normalize [file join $script_dir .. ..]]
+# puts "============================================================================="
+=============================================================================
+# puts " RVP Direct Synthesis Flow (with TclStackFree workaround)"
+ RVP Direct Synthesis Flow (with TclStackFree workaround)
+# puts " Project root: $project_root"
+ Project root: D:/大学资料/北邮/课程/阶段式程序设计2
+# puts "============================================================================="
+=============================================================================
+# create_project -in_memory -part xc7a100tcsg324-1
+# set_property default_lib xil_defaultlib [current_project]
+# set_property target_language Verilog [current_project]
+# set_property include_dirs [list \
+#     [file join $project_root "config"] \
+#     [file join $project_root "synth" "vivado"] \
+# ] [current_fileset]
+# set_property verilog_define {RVP_RV32E=0 RVP_RV32M=1 RVP_RV32C=0 RVP_ICacheEnable=0 RVP_DCacheEnable=0 RVP_ICacheReplacePolicy=0 RVP_DCacheReplacePolicy=0 RVP_Forwarding=0 RVP_BranchPredict=0 RVP_CacheStatsEnable=0} [current_fileset]
+# file copy -force [file join $script_dir "firmware.hex"] [file join $project_root "rtl" "core" "firmware.hex"]
+# puts "Copied firmware.hex to rtl/core/"
+Copied firmware.hex to rtl/core/
+# read_verilog -sv [list \
+#     [file join $project_root "rtl" "rvp_pkg.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_alu.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_branch_unit.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_core_pipeline.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_data_mem.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_decoder.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_forward_unit.sv"] \
+#     [file join $project_root "rtl" "periph" "rvp_gpio.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_hazard_unit.sv"] \
+#     [file join $project_root "rtl" "cache" "rvp_icache.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_imm_generator.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_instr_mem.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_multdiv.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_pipeline_regs.sv"] \
+#     [file join $project_root "rtl" "core" "rvp_register_file.sv"] \
+#     [file join $project_root "rtl" "rvp_soc.sv"] \
+#     [file join $project_root "rtl" "periph" "rvp_timer.sv"] \
+#     [file join $project_root "rtl" "periph" "rvp_uart.sv"] \
+#     [file join $project_root "rtl" "rvp_fpga_top.sv"] \
+# ]
+# puts "Read all SystemVerilog source files"
+Read all SystemVerilog source files
+# set xdc_file [file join $script_dir "rvp_nexys4.xdc"]
+# puts "Reading XDC: $xdc_file"
+Reading XDC: synth/vivado/rvp_nexys4.xdc
+# read_xdc $xdc_file
+# set_msg_config -id {Synth 8-3331} -suppress
+# puts "\n============================================================================="
+
+=============================================================================
+# puts " Step 7: Running synth_design (with catch)..."
+ Step 7: Running synth_design (with catch)...
+# puts "============================================================================="
+=============================================================================
+Command: synth_design -top rvp_fpga_top -part xc7a100tcsg324-1 -flatten_hierarchy none
+Starting synth_design
+Attempting to get a license for feature 'Synthesis' and/or device 'xc7a100t'
+INFO: [Common 17-349] Got license for feature 'Synthesis' and/or device 'xc7a100t'
+INFO: Launching helper process for spawning children vivado processes
+INFO: Helper process launched with PID 28848 
+---------------------------------------------------------------------------------
+Starting RTL Elaboration : Time (s): cpu = 00:00:01 ; elapsed = 00:00:02 . Memory (MB): peak = 363.949 ; gain = 101.211
+---------------------------------------------------------------------------------
+INFO: [Synth 8-6157] synthesizing module 'rvp_fpga_top' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_fpga_top.sv:26]
+INFO: [Synth 8-6157] synthesizing module 'rvp_soc' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_soc.sv:23]
+	Parameter CLK_FREQ bound to: 32'sb00000001011111010111100001000000 
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_soc.sv:77]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_soc.sv:98]
+INFO: [Synth 8-6157] synthesizing module 'rvp_core_pipeline' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:18]
+INFO: [Synth 8-6157] synthesizing module 'rvp_icache' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/cache/rvp_icache.sv:28]
+	Parameter NUM_LINES bound to: 32'sb00000000000000000000000001000000 
+	Parameter INDEX_W bound to: 32'sb00000000000000000000000000000110 
+	Parameter TAG_W bound to: 32'sb00000000000000000000000000011000 
+INFO: [Synth 8-6157] synthesizing module 'rvp_instr_mem' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_instr_mem.sv:15]
+	Parameter DEPTH bound to: 32'sb00000000000000000000100000000000 
+	Parameter ADDR_BITS bound to: 32'sb00000000000000000000000000001011 
+INFO: [Synth 8-3876] $readmem data file 'firmware.hex' is read successfully [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_instr_mem.sv:32]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_instr_mem' (1#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_instr_mem.sv:15]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_icache' (2#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/cache/rvp_icache.sv:28]
+INFO: [Synth 8-6157] synthesizing module 'rvp_pipeline_regs' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_pipeline_regs.sv:17]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_pipeline_regs' (3#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_pipeline_regs.sv:17]
+INFO: [Synth 8-6157] synthesizing module 'rvp_decoder' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:18]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:52]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:110]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:132]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:151]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:169]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:169]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:203]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:203]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:216]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:216]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_decoder' (4#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_decoder.sv:18]
+INFO: [Synth 8-6157] synthesizing module 'rvp_imm_generator' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_imm_generator.sv:19]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_imm_generator.sv:67]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_imm_generator' (5#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_imm_generator.sv:19]
+INFO: [Synth 8-6157] synthesizing module 'rvp_register_file' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_register_file.sv:27]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_register_file' (6#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_register_file.sv:27]
+INFO: [Synth 8-6157] synthesizing module 'rvp_forward_unit' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_forward_unit.sv:22]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_forward_unit' (7#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_forward_unit.sv:22]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:244]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:251]
+INFO: [Synth 8-6157] synthesizing module 'rvp_alu' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_alu.sv:17]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_alu.sv:70]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_alu.sv:87]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_alu' (8#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_alu.sv:17]
+INFO: [Synth 8-6157] synthesizing module 'rvp_multdiv' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_multdiv.sv:25]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_multdiv.sv:84]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_multdiv.sv:84]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_multdiv' (9#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_multdiv.sv:25]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:303]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:303]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:327]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:327]
+INFO: [Synth 8-6157] synthesizing module 'rvp_hazard_unit' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_hazard_unit.sv:24]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_hazard_unit' (10#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_hazard_unit.sv:24]
+INFO: [Synth 8-6157] synthesizing module 'rvp_branch_unit' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_branch_unit.sv:23]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_branch_unit' (11#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_branch_unit.sv:23]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:375]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:375]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_core_pipeline' (12#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_core_pipeline.sv:18]
+INFO: [Synth 8-6157] synthesizing module 'rvp_data_mem' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:29]
+	Parameter DEPTH bound to: 32'sb00000000000000000000100000000000 
+	Parameter ADDR_BITS bound to: 32'sb00000000000000000000000000001011 
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:65]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:81]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:81]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:102]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:117]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:117]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_data_mem' (13#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/core/rvp_data_mem.sv:29]
+INFO: [Synth 8-6157] synthesizing module 'rvp_uart' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_uart.sv:25]
+	Parameter CLK_FREQ bound to: 32'sb00000001011111010111100001000000 
+	Parameter BAUD_RATE bound to: 32'sb00000000000000011100001000000000 
+	Parameter DIVISOR bound to: 32'sb00000000000000000000000011011001 
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_uart.sv:79]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_uart.sv:79]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_uart.sv:127]
+INFO: [Synth 8-226] default block is never used [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_uart.sv:127]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_uart.sv:142]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_uart' (14#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_uart.sv:25]
+INFO: [Synth 8-6157] synthesizing module 'rvp_gpio' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_gpio.sv:21]
+	Parameter WIDTH bound to: 32'sb00000000000000000000000000010000 
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_gpio.sv:57]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_gpio' (15#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_gpio.sv:21]
+INFO: [Synth 8-6157] synthesizing module 'rvp_timer' [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_timer.sv:20]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_timer.sv:57]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_timer' (16#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/periph/rvp_timer.sv:20]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_soc' (17#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_soc.sv:23]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_fpga_top.sv:120]
+INFO: [Synth 8-294] found qualifier unique on case statement: implementing as parallel_case [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_fpga_top.sv:137]
+INFO: [Synth 8-6155] done synthesizing module 'rvp_fpga_top' (18#1) [D:/大学资料/北邮/课程/阶段式程序设计2/rtl/rvp_fpga_top.sv:26]

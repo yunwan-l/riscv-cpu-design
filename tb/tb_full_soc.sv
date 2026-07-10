@@ -39,7 +39,7 @@ module tb_full_soc;
   initial begin
     // Load firmware
     #1;
-    $readmemh("E:/rvp_nexys/sw/tests/full_test_words.hex", dut.cpu.instr_mem.mem);
+    $readmemh("../sw/tests/full_test_words.hex", dut.cpu.icache.backing_mem.mem);
 
     $display("==========================================================");
     $display(" Full SoC Program Test (141 instructions)");

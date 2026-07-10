@@ -253,6 +253,23 @@ if {$verilog_define_str ne ""} {
 set_property include_dirs [list [file join $project_root "config"]] [get_filesets sources_1]
 
 # -----------------------------------------------------------------------------
+# Add the firmware.hex for BRAM initialization ($readmemh)
+# Copy it to the project directory so Vivado can find it during synthesis
+# -----------------------------------------------------------------------------
+set firmware_src [file join $script_dir "firmware.hex"]
+if {[file exists $firmware_src]} {
+    # Add as a design source so Vivado tracks it
+    add_files -norecurse $firmware_src
+    set firmware_copy [file join $full_project_dir ${project_name}.srcs "sources_1" "imports" "firmware.hex"]
+    file mkdir [file dirname $firmware_copy]
+    file copy -force $firmware_src $firmware_copy
+    puts "  Added firmware: firmware.hex (copied to project sources)"
+} else {
+    puts "  WARNING: firmware.hex not found at $firmware_src"
+    puts "           BRAM will be uninitialized on FPGA!"
+}
+
+# -----------------------------------------------------------------------------
 # Set the top-level module
 # -----------------------------------------------------------------------------
 set_property top $top_module [current_fileset]

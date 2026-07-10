@@ -28,6 +28,17 @@ puts "\n>>> Step 1: Creating Vivado project..."
 # 使用 source 调用 create_project.tcl，传递 top=rvp_fpga_top
 source [file join $script_dir "create_project.tcl"]
 
+# 将 firmware.hex 拷贝到综合运行目录，确保 $readmemh 能找到
+set firmware_src [file join $script_dir "firmware.hex"]
+set synth_run_dir [file join $project_root "build" "vivado" "rvp_nexys4.runs" "synth_1"]
+file mkdir $synth_run_dir
+if {[file exists $firmware_src]} {
+    file copy -force $firmware_src [file join $synth_run_dir "firmware.hex"]
+    puts "   Copied firmware.hex to synth run directory"
+} else {
+    puts "   WARNING: firmware.hex not found! BRAM will be uninitialized."
+}
+
 # -----------------------------------------------------------------------------
 # Step 2: 综合设计
 # -----------------------------------------------------------------------------
@@ -91,6 +102,8 @@ puts "============================================"
 puts $timing_summary
 
 # 提取 WNS (Worst Negative Slack)
+# clk_soc 域周期为 40ns (25MHz)，sys_clk_pin 域周期为 10ns (100MHz)
+# 关键路径在 clk_soc 域，使用 40ns 计算 Fmax
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1]]
 if {$wns eq ""} {
     set wns "N/A"
@@ -101,8 +114,9 @@ puts " Timing Summary"
 puts "============================================"
 puts "  WNS (Worst Negative Slack): $wns ns"
 if {$wns ne "N/A" && $wns >= 0} {
-    set fmax [expr {1000.0 / (10.0 - $wns)}]
-    puts "  Estimated Fmax: [format "%.2f" $fmax] MHz"
+    # clk_soc 域：周期 40ns (25MHz)，Fmax = 1000 / (40 - WNS)
+    set fmax [expr {1000.0 / (40.0 - $wns)}]
+    puts "  Estimated Fmax (clk_soc): [format "%.2f" $fmax] MHz"
 } else {
     puts "  Timing not met (or no timing paths)"
 }
@@ -144,8 +158,8 @@ if {$impl_status eq "route_design Complete!"} {
     puts "============================================"
     puts "  Post-Impl WNS: $wns_impl ns"
     if {$wns_impl ne "" && $wns_impl >= 0} {
-        set fmax_impl [expr {1000.0 / (10.0 - $wns_impl)}]
-        puts "  Final Fmax: [format "%.2f" $fmax_impl] MHz"
+        set fmax_impl [expr {1000.0 / (40.0 - $wns_impl)}]
+        puts "  Final Fmax (clk_soc, 25MHz base): [format "%.2f" $fmax_impl] MHz"
         puts "  Throughput (ideal CPI=1): [format "%.2f" $fmax_impl] MIPS"
     } else {
         puts "  Timing NOT met after implementation"

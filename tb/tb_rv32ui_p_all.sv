@@ -67,7 +67,7 @@ module tb_rv32ui_p_all;
   initial begin
     // ??????????????????
             #1;  // wait for memory init
-    $readmemh("E:/rvp_nexys/sw/tests/rv32ui_p_all_words.hex", dut.instr_mem.mem);
+    $readmemh("../sw/tests/rv32ui_p_all_words.hex", dut.icache.backing_mem.mem);
 
     rst_n = 0;
     last_pc = 32'h0;

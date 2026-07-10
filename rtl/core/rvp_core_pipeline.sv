@@ -39,7 +39,11 @@ module rvp_core_pipeline (
   output logic [31:0]             perf_inst_o,       // ???????????????
   output logic [31:0]             perf_stall_o,      // Load-Use ?????????
   output logic [31:0]             perf_flush_o,      // ???????????????
-  output logic [31:0]             perf_branch_o      // ??????/???????????????
+  output logic [31:0]             perf_branch_o,     // ??????/???????????????
+
+  // I-Cache 统计计数器
+  output logic [31:0]             icache_hit_o,      // I-Cache 命中次数
+  output logic [31:0]             icache_miss_o      // I-Cache 未命中次数
 );
 
   import rvp_pkg::*;
@@ -72,6 +76,10 @@ module rvp_core_pipeline (
   logic [31:0] ex_forward_a_val, ex_forward_b_val;
   logic [31:0] ex_multdiv_result;    // M ?????????????????????
   logic [31:0] ex_result;            // ALU ??? multdiv ?????????????????????
+
+  // Multdiv 控制信号
+  logic multdiv_start, multdiv_done, multdiv_idle;
+  logic multdiv_stall;
 
   // EX/MEM ??????
   logic [31:0] mem_pc;
@@ -108,16 +116,22 @@ module rvp_core_pipeline (
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni)
       if_pc <= 32'h0;
-    else if (stall)
+    else if (stall | multdiv_stall)
       if_pc <= if_pc;        // ?????????PC ??????
     else
       if_pc <= if_pc_next;   // ????????????
   end
 
-  // ??????????????????DEPTH=2048 ??? ADDR_BITS=11 ??? 11???????????????
-  rvp_instr_mem instr_mem (
-    .addr_i  (if_pc[12:2]),
-    .instr_o (if_instr)
+  // I-Cache：直接映射指令缓存，后备存储为 rvp_instr_mem（BRAM）
+  rvp_icache icache (
+    .clk_i         (clk_i),
+    .rst_ni        (rst_ni),
+    .addr_i        (if_pc),
+    .instr_o       (if_instr),
+    .hit_o         (),           // 单周期命中信号（统计用，暂不外连）
+    .miss_o        (),
+    .hit_count_o   (icache_hit_o),
+    .miss_count_o  (icache_miss_o)
   );
 
   // =========================================================================
@@ -128,7 +142,7 @@ module rvp_core_pipeline (
 
     // IF/ID
     .if_id_flush_i (flush_if_id),
-    .if_id_stall_i (stall),
+    .if_id_stall_i (stall | multdiv_stall),
     .if_pc_i       (if_pc),
     .if_instr_i    (if_instr),
     .id_pc_o       (id_pc),
@@ -136,7 +150,7 @@ module rvp_core_pipeline (
 
     // ID/EX
     .id_ex_flush_i (flush_id_ex),
-    .id_ex_stall_i (stall),
+    .id_ex_stall_i (multdiv_stall),
     .id_pc_i       (id_pc),
     .id_ctrl_i     (id_ctrl),
     .id_rs1_data_i (id_rs1_fwd),
@@ -150,7 +164,7 @@ module rvp_core_pipeline (
 
     // EX/MEM
     .ex_mem_flush_i (1'b0),
-    .ex_mem_stall_i (1'b0),
+    .ex_mem_stall_i (multdiv_stall),
     .ex_pc_i        (ex_pc),
     .ex_ctrl_i      (ex_ctrl),
     .ex_alu_result_i(ex_result),       // ALU ??? multdiv ??????
@@ -164,7 +178,7 @@ module rvp_core_pipeline (
 
     // MEM/WB
     .mem_wb_flush_i (1'b0),
-    .mem_wb_stall_i (1'b0),
+    .mem_wb_stall_i (multdiv_stall),
     .mem_pc_i       (mem_pc),
     .mem_ctrl_i     (mem_ctrl),
     .mem_alu_result_i(mem_alu_result),
@@ -260,11 +274,23 @@ module rvp_core_pipeline (
   );
 
   // ??????????????????M ???????????? ???????????????????????????
+
+  // Multdiv 控制信号
+  // start: 当 use_multdiv=1 且 multdiv 空闲时启动
+  assign multdiv_start = ex_ctrl.use_multdiv && multdiv_idle;
+  // stall: 当 use_multdiv=1 且结果未就绪时停顿全流水线
+  assign multdiv_stall = ex_ctrl.use_multdiv && !multdiv_done;
   rvp_multdiv multdiv (
-    .op_i       (ex_ctrl.multdiv_op),
-    .operand_a_i(ex_forward_a_val),
-    .operand_b_i(ex_forward_b_val),
-    .result_o   (ex_multdiv_result)
+    .clk_i       (clk_i),
+    .rst_ni      (rst_ni),
+    .flush_i     ((branch_taken || take_jump) && !multdiv_stall),
+    .start_i     (multdiv_start),
+    .op_i        (ex_ctrl.multdiv_op),
+    .operand_a_i (ex_forward_a_val),
+    .operand_b_i (ex_forward_b_val),
+    .result_o    (ex_multdiv_result),
+    .done_o      (multdiv_done),
+    .idle_o      (multdiv_idle)
   );
 
   // ???????????????M ??????????????? multdiv ?????????????????? ALU ??????
@@ -307,9 +333,10 @@ module rvp_core_pipeline (
     if (!rst_ni) begin
       mem_imm_wb <= 32'b0;
       wb_imm     <= 32'b0;
-    end else begin
-      mem_imm_wb <= ex_imm;       // EX ??? MEM
-      wb_imm     <= mem_imm_wb;   // MEM ??? WB
+    end else if (!multdiv_stall) begin
+      // multdiv_stall 期间冻结，与 pipe_regs 的 EX/MEM、MEM/WB 保持一致
+      mem_imm_wb <= ex_imm;       // EX → MEM
+      wb_imm     <= mem_imm_wb;   // MEM → WB
     end
   end
 
@@ -352,14 +379,16 @@ module rvp_core_pipeline (
   // 9. ????????????
   // =========================================================================
   // ????????????????????????????????????IF/ID ??? ID/EX ????????????????????????????????????
-  assign flush_if_id = (branch_taken || take_jump) && !stall;
-  assign flush_id_ex = stall;  // ????????? ID/EX ?????? NOP????????????
+  assign flush_if_id = (branch_taken || take_jump) && !(stall | multdiv_stall);
+  // 分支命中时需要 flush ID/EX（杀死错误路径指令），Load-Use stall 时也 flush
+  // multdiv_stall 期间不 flush（流水线冻结，且 multdiv 不是分支指令）
+  assign flush_id_ex = stall | ((branch_taken || take_jump) && !(stall | multdiv_stall));
 
   // =========================================================================
   // 10. ????????? PC ??????
   // =========================================================================
   always_comb begin
-    if (stall) begin
+    if (stall | multdiv_stall) begin
       if_pc_next = if_pc;   // ?????????PC ??????
     end else begin
       unique case (ex_ctrl.next_pc)
@@ -420,6 +449,12 @@ module rvp_core_pipeline (
       ex_valid_q  <= 1'b0;
       mem_valid_q <= 1'b0;
       wb_valid_q  <= 1'b0;
+    end else if (multdiv_stall) begin
+      // Multdiv stall: freeze all valid signals
+      id_valid_q  <= id_valid_q;
+      ex_valid_q  <= ex_valid_q;
+      mem_valid_q <= mem_valid_q;
+      wb_valid_q  <= wb_valid_q;
     end else begin
       // IF ??? ID
       if (flush_if_id)
@@ -457,8 +492,8 @@ module rvp_core_pipeline (
       if (wb_valid_q)
         perf_inst_r <= perf_inst_r + 32'd1;
 
-      // stall_count: Load-Use ????????????
-      if (stall)
+      // stall_count: Load-Use ? multdiv ????????????
+      if (stall | multdiv_stall)
         perf_stall_r <= perf_stall_r + 32'd1;
 
       // flush_count: ??????/??????????????????
