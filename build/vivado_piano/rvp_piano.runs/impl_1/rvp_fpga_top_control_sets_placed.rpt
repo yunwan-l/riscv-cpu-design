@@ -1,0 +1,215 @@
+Copyright 1986-2018 Xilinx, Inc. All Rights Reserved.
+-----------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2018.3 (win64) Build 2405991 Thu Dec  6 23:38:27 MST 2018
+| Date         : Sat Jul 11 00:54:19 2026
+| Host         : Mizii running 64-bit major release  (build 9200)
+| Command      : report_control_sets -verbose -file rvp_fpga_top_control_sets_placed.rpt
+| Design       : rvp_fpga_top
+| Device       : xc7a100t
+-----------------------------------------------------------------------------------------
+
+Control Set Information
+
+Table of Contents
+-----------------
+1. Summary
+2. Histogram
+3. Flip-Flop Distribution
+4. Detailed Control Set Information
+
+1. Summary
+----------
+
++----------------------------------------------------------+-------+
+|                          Status                          | Count |
++----------------------------------------------------------+-------+
+| Number of unique control sets                            |   148 |
+| Unused register locations in slices containing registers |   162 |
++----------------------------------------------------------+-------+
+
+
+2. Histogram
+------------
+
++--------+--------------+
+| Fanout | Control Sets |
++--------+--------------+
+|      5 |            1 |
+|      6 |            1 |
+|      8 |            1 |
+|    16+ |          145 |
++--------+--------------+
+
+
+3. Flip-Flop Distribution
+-------------------------
+
++--------------+-----------------------+------------------------+-----------------+--------------+
+| Clock Enable | Synchronous Set/Reset | Asynchronous Set/Reset | Total Registers | Total Slices |
++--------------+-----------------------+------------------------+-----------------+--------------+
+| No           | No                    | No                     |               0 |            0 |
+| No           | No                    | Yes                    |             108 |           34 |
+| No           | Yes                   | No                     |              20 |            5 |
+| Yes          | No                    | No                     |               0 |            0 |
+| Yes          | No                    | Yes                    |            5558 |         2622 |
+| Yes          | Yes                   | No                     |               0 |            0 |
++--------------+-----------------------+------------------------+-----------------+--------------+
+
+
+4. Detailed Control Set Information
+-----------------------------------
+
++----------------+-----------------------------------------------------+----------------------+------------------+----------------+
+|  Clock Signal  |                    Enable Signal                    |   Set/Reset Signal   | Slice Load Count | Bel Load Count |
++----------------+-----------------------------------------------------+----------------------+------------------+----------------+
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/E[0]                              | soc/cpu/icache/rst_n |                1 |              5 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/ex_ctrl_o_reg[next_pc][1]_3[0]    | soc/cpu/icache/rst_n |                2 |              6 |
+|  clk_soc_BUFG  | soc/uart/tx_shift[7]_i_1_n_0                        | soc/cpu/icache/rst_n |                3 |              8 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[18]_0[0]     | soc/cpu/icache/rst_n |               10 |             16 |
+|  clk_IBUF_BUFG |                                                     | soc/cpu/icache/rst_n |                6 |             22 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_6        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/icache/miss_count_o[0]_i_1_n_0              | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/icache/if_pc_reg[7]                         | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_1        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_5        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_8        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_0        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_1        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_10       |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_6        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_8        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_9        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_5        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_2        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_4        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_3        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_11       |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_2        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_0        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_6        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_4        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_5        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_11       |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_2        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_7        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_rs2_data_o_reg[1]_0           | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/perf_branch_r0                    | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/ex_ctrl_o_reg[multdiv_op][2]_5[0] | soc/cpu/icache/rst_n |               16 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/ex_ctrl_o_reg[multdiv_op][2]_6[0] | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/flush_if_id1                      | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_1[0]     | soc/cpu/icache/rst_n |               25 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_14[0]    | soc/cpu/icache/rst_n |               18 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_18[0]    | soc/cpu/icache/rst_n |               15 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_11[0]    | soc/cpu/icache/rst_n |               16 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_12[0]    | soc/cpu/icache/rst_n |               21 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_16[0]    | soc/cpu/icache/rst_n |               18 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_17[0]    | soc/cpu/icache/rst_n |               19 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_19[0]    | soc/cpu/icache/rst_n |               21 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_20[0]    | soc/cpu/icache/rst_n |               18 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_2[0]     | soc/cpu/icache/rst_n |               27 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_21[0]    | soc/cpu/icache/rst_n |               14 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_22[0]    | soc/cpu/icache/rst_n |               22 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_0[0]     | soc/cpu/icache/rst_n |               26 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_13[0]    | soc/cpu/icache/rst_n |               19 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_15[0]    | soc/cpu/icache/rst_n |               19 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_10[0]    | soc/cpu/icache/rst_n |               15 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_5[0]     | soc/cpu/icache/rst_n |               22 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_23[0]    | soc/cpu/icache/rst_n |               28 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_29[0]    | soc/cpu/icache/rst_n |               25 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_8[0]     | soc/cpu/icache/rst_n |               22 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_3[0]     | soc/cpu/icache/rst_n |               19 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_26[0]    | soc/cpu/icache/rst_n |               21 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_25[0]    | soc/cpu/icache/rst_n |               25 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_4[0]     | soc/cpu/icache/rst_n |               16 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_28[0]    | soc/cpu/icache/rst_n |               29 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_6[0]     | soc/cpu/icache/rst_n |               17 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[12]_3        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_27[0]    | soc/cpu/icache/rst_n |               22 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_7[0]     | soc/cpu/icache/rst_n |               22 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_24[0]    | soc/cpu/icache/rst_n |               22 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_30[0]    | soc/cpu/icache/rst_n |               21 |             32 |
+|  clk_soc_BUFG  | soc/uart/clk_div[31]_i_1_n_0                        | soc/cpu/icache/rst_n |               13 |             32 |
+|  clk_soc_BUFG  | soc/cpu/wb_valid_q                                  | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/wb_ctrl_o_reg[reg_write]_9[0]     | soc/cpu/icache/rst_n |               16 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_1        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_9        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_3        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_7        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_0        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/flush_if_id                       | soc/cpu/icache/rst_n |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[10]_10       |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_7        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/mem_alu_result_o_reg[11]_4        |                      |                8 |             32 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[52][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[0][23]_i_1_n_0             | soc/cpu/icache/rst_n |               18 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[10][23]_i_1_n_0            | soc/cpu/icache/rst_n |               24 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[13][23]_i_1_n_0            | soc/cpu/icache/rst_n |               30 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[14][23]_i_1_n_0            | soc/cpu/icache/rst_n |               13 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[16][23]_i_1_n_0            | soc/cpu/icache/rst_n |               21 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[17][23]_i_1_n_0            | soc/cpu/icache/rst_n |               25 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[18][23]_i_1_n_0            | soc/cpu/icache/rst_n |               23 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[19][23]_i_1_n_0            | soc/cpu/icache/rst_n |               20 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[1][23]_i_1_n_0             | soc/cpu/icache/rst_n |               26 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[20][23]_i_1_n_0            | soc/cpu/icache/rst_n |               24 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[21][23]_i_1_n_0            | soc/cpu/icache/rst_n |               21 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[22][23]_i_1_n_0            | soc/cpu/icache/rst_n |               16 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[11][23]_i_1_n_0            | soc/cpu/icache/rst_n |               23 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[12][23]_i_1_n_0            | soc/cpu/icache/rst_n |               15 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[15][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[28][23]_i_1_n_0            | soc/cpu/icache/rst_n |               30 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[60][23]_i_1_n_0            | soc/cpu/icache/rst_n |               30 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[61][23]_i_1_n_0            | soc/cpu/icache/rst_n |               25 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[7][23]_i_1_n_0             | soc/cpu/icache/rst_n |               29 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[8][23]_i_1_n_0             | soc/cpu/icache/rst_n |               35 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[23][23]_i_1_n_0            | soc/cpu/icache/rst_n |               31 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[27][23]_i_1_n_0            | soc/cpu/icache/rst_n |               30 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[30][23]_i_1_n_0            | soc/cpu/icache/rst_n |               31 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[2][23]_i_1_n_0             | soc/cpu/icache/rst_n |               19 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[43][23]_i_1_n_0            | soc/cpu/icache/rst_n |               28 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[34][23]_i_1_n_0            | soc/cpu/icache/rst_n |               25 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[38][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[44][23]_i_1_n_0            | soc/cpu/icache/rst_n |               27 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[42][23]_i_1_n_0            | soc/cpu/icache/rst_n |               24 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[48][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[54][23]_i_1_n_0            | soc/cpu/icache/rst_n |               23 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[57][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[29][23]_i_1_n_0            | soc/cpu/icache/rst_n |               34 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[63][23]_i_1_n_0            | soc/cpu/icache/rst_n |               48 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[6][23]_i_1_n_0             | soc/cpu/icache/rst_n |               29 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[24][23]_i_1_n_0            | soc/cpu/icache/rst_n |               19 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[26][23]_i_1_n_0            | soc/cpu/icache/rst_n |               25 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[31][23]_i_1_n_0            | soc/cpu/icache/rst_n |               33 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[36][23]_i_1_n_0            | soc/cpu/icache/rst_n |               17 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[45][23]_i_1_n_0            | soc/cpu/icache/rst_n |               28 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[49][23]_i_1_n_0            | soc/cpu/icache/rst_n |               21 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[9][23]_i_1_n_0             | soc/cpu/icache/rst_n |               35 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[62][23]_i_1_n_0            | soc/cpu/icache/rst_n |               28 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[53][23]_i_1_n_0            | soc/cpu/icache/rst_n |               23 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[56][23]_i_1_n_0            | soc/cpu/icache/rst_n |               24 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[51][23]_i_1_n_0            | soc/cpu/icache/rst_n |               21 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[37][23]_i_1_n_0            | soc/cpu/icache/rst_n |               30 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[25][23]_i_1_n_0            | soc/cpu/icache/rst_n |               21 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[32][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[35][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[4][23]_i_1_n_0             | soc/cpu/icache/rst_n |               18 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[50][23]_i_1_n_0            | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[41][23]_i_1_n_0            | soc/cpu/icache/rst_n |               20 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[46][23]_i_1_n_0            | soc/cpu/icache/rst_n |               37 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[39][23]_i_1_n_0            | soc/cpu/icache/rst_n |               17 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[40][23]_i_1_n_0            | soc/cpu/icache/rst_n |               24 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[55][23]_i_1_n_0            | soc/cpu/icache/rst_n |               30 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[58][23]_i_1_n_0            | soc/cpu/icache/rst_n |               20 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[3][23]_i_1_n_0             | soc/cpu/icache/rst_n |               22 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[59][23]_i_1_n_0            | soc/cpu/icache/rst_n |               25 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[47][23]_i_1_n_0            | soc/cpu/icache/rst_n |               36 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[5][23]_i_1_n_0             | soc/cpu/icache/rst_n |               19 |             54 |
+|  clk_soc_BUFG  | soc/cpu/icache/tag_array[33][23]_i_1_n_0            | soc/cpu/icache/rst_n |               24 |             54 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/ex_ctrl_o_reg[multdiv_op][2]_4[0] | soc/cpu/icache/rst_n |               26 |             64 |
+|  clk_soc_BUFG  | soc/cpu/multdiv/op_r                                | soc/cpu/icache/rst_n |               21 |             67 |
+|  clk_soc_BUFG  |                                                     | soc/cpu/icache/rst_n |               33 |            106 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/state_r_reg[1]                    | soc/cpu/icache/rst_n |               49 |            130 |
+|  clk_soc_BUFG  | soc/cpu/pipe_regs/ex_pc_o[31]_i_1_n_0               | soc/cpu/icache/rst_n |               56 |            162 |
+|  clk_soc_BUFG  | soc/cpu/multdiv/p_2_in_0                            | soc/cpu/icache/rst_n |              131 |            332 |
++----------------+-----------------------------------------------------+----------------------+------------------+----------------+
+
+
