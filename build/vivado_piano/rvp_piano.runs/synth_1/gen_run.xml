@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<GenRun Id="synth_1" LaunchPart="xc7a100tcsg324-1" LaunchTime="1783702251">
+<GenRun Id="synth_1" LaunchPart="xc7a100tcsg324-1" LaunchTime="1783878342">
   <File Type="PA-TCL" Name="rvp_fpga_top.tcl"/>
   <File Type="RDS-PROPCONSTRS" Name="rvp_fpga_top_drc_synth.rpt"/>
   <File Type="REPORTS-TCL" Name="rvp_fpga_top_reports.tcl"/>
@@ -74,7 +74,7 @@
         <Attr Name="UsedIn" Val="simulation"/>
       </FileInfo>
     </File>
-    <File Path="$PPRDIR/../../rtl/cache/rvp_icache.sv">
+    <File Path="$PPRDIR/../../rtl/cache/rvp_icache_pmru8.sv">
       <FileInfo>
         <Attr Name="UsedIn" Val="synthesis"/>
         <Attr Name="UsedIn" Val="implementation"/>
@@ -96,13 +96,6 @@
       </FileInfo>
     </File>
     <File Path="$PPRDIR/../../rtl/core/rvp_multdiv.sv">
-      <FileInfo>
-        <Attr Name="UsedIn" Val="synthesis"/>
-        <Attr Name="UsedIn" Val="implementation"/>
-        <Attr Name="UsedIn" Val="simulation"/>
-      </FileInfo>
-    </File>
-    <File Path="$PPRDIR/../../rtl/periph/rvp_piano.sv">
       <FileInfo>
         <Attr Name="UsedIn" Val="synthesis"/>
         <Attr Name="UsedIn" Val="implementation"/>
@@ -151,6 +144,14 @@
         <Attr Name="UsedIn" Val="simulation"/>
       </FileInfo>
     </File>
+    <File Path="$PPRDIR/../../rtl/periph/rvp_piano.sv">
+      <FileInfo>
+        <Attr Name="AutoDisabled" Val="1"/>
+        <Attr Name="UsedIn" Val="synthesis"/>
+        <Attr Name="UsedIn" Val="implementation"/>
+        <Attr Name="UsedIn" Val="simulation"/>
+      </FileInfo>
+    </File>
     <File Path="$PPRDIR/../../config/rvp_config.svh">
       <FileInfo>
         <Attr Name="AutoDisabled" Val="1"/>
@@ -183,9 +184,7 @@
     </Config>
   </FileSet>
   <Strategy Version="1" Minor="2">
-    <StratHandle Name="Vivado Synthesis Defaults" Flow="Vivado Synthesis 2018">
-      <Desc>Vivado Synthesis Defaults</Desc>
-    </StratHandle>
+    <StratHandle Name="Vivado Synthesis Defaults" Flow="Vivado Synthesis 2018"/>
     <Step Id="synth_design"/>
   </Strategy>
 </GenRun>

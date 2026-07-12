@@ -1,8 +1,10 @@
 # =============================================================================
-# run_all_tests.ps1 — RVP 一键回归测试脚本
+# run_all_tests.ps1 - RVP Regression Test Suite
 # =============================================================================
-# 用法：在项目根目录下执行 .\tb\run_all_tests.ps1
-# 功能：编译所有 RTL，运行所有测试，汇总 PASS/FAIL
+# Usage:  .\tb\run_all_tests.ps1
+# Steps:  1. Generate hex files (via Python assembler)
+#         2. Compile RTL + run functional tests (10 modules)
+#         3. Run performance benchmark (6 benchmarks, CPI measurement)
 # =============================================================================
 
 param(
@@ -12,9 +14,12 @@ param(
 $ms = $ModelSim
 $vlog = "$ms\vlog.exe"
 $vsim = "$ms\vsim.exe"
-# 使用 junction link 避免中文路径问题（C:\rvp_proj → d:\大学资料\北邮\课程\阶段式程序设计2）
+
+# Use junction link to avoid non-ASCII path issues
 $projRoot = "C:\rvp_proj"
 $tbDir = "$projRoot\tb"
+$hexDir = "$projRoot\sw\tests"
+
 $rtlPkg = "$projRoot\rtl\rvp_pkg.sv"
 $rtlCore = @(
     "$projRoot\rtl\core\rvp_alu.sv",
@@ -26,6 +31,9 @@ $rtlCore = @(
     "$projRoot\rtl\core\rvp_data_mem.sv",
     "$projRoot\rtl\core\rvp_multdiv.sv"
 )
+$rtlCache = @(
+    "$projRoot\rtl\cache\rvp_icache_pmru8.sv"
+)
 $rtlPipe = @(
     "$projRoot\rtl\core\rvp_pipeline_regs.sv",
     "$projRoot\rtl\core\rvp_forward_unit.sv",
@@ -35,22 +43,27 @@ $rtlPipe = @(
 $rtlPeriph = @(
     "$projRoot\rtl\periph\rvp_uart.sv",
     "$projRoot\rtl\periph\rvp_gpio.sv",
-    "$projRoot\rtl\periph\rvp_timer.sv"
+    "$projRoot\rtl\periph\rvp_timer.sv",
+    "$projRoot\rtl\periph\rvp_piano.sv"
 )
 $rtlSocTop = "$projRoot\rtl\rvp_soc.sv"
 
-# 测试定义：名称 → (源文件, 需要的RTL, 预期输出模式)
+# Common RTL sets
+$rtlPipelineAll = @($rtlPkg) + $rtlCore + $rtlCache + $rtlPipe
+$rtlSocAll = $rtlPipelineAll + $rtlPeriph + @($rtlSocTop)
+
+# Test definitions
 $tests = @(
-    @{ Name="ALU";              Src="tb_alu.sv";            Rtl=@($rtlPkg)+@($rtlCore[0]);                                      Pattern="PASSED|FAILED" },
-    @{ Name="Register File";    Src="tb_register_file.sv";  Rtl=@($rtlPkg)+@($rtlCore[1]);                                      Pattern="PASSED|FAILED" },
-    @{ Name="Imm Generator";    Src="tb_imm_generator.sv";  Rtl=@($rtlPkg)+@($rtlCore[2]);                                      Pattern="PASSED|FAILED" },
-    @{ Name="Decoder";          Src="tb_decoder.sv";        Rtl=@($rtlPkg)+@($rtlCore[3]);                                      Pattern="PASSED|FAILED" },
-    @{ Name="Branch Unit";      Src="tb_branch_unit.sv";    Rtl=@($rtlCore[4]);                                                 Pattern="PASSED|FAILED" },
-    @{ Name="MultDiv (M-ext)";  Src="tb_multdiv.sv";        Rtl=@($rtlPkg)+@($rtlCore[7]);                                      Pattern="PASSED|FAILED" },
-    @{ Name="Single-Cycle CPU"; Src="tb_core_single.sv";    Rtl=@($rtlPkg)+$rtlCore+@("$projRoot\rtl\core\rvp_core_single.sv"); Pattern="PASSED|FAILED" },
-    @{ Name="Pipeline CPU";     Src="tb_core_pipeline.sv";  Rtl=@($rtlPkg)+$rtlCore+$rtlPipe;                                   Pattern="PASSED|FAILED" },
-    @{ Name="RV32I Self-Check"; Src="tb_rv32ui_p_all.sv";   Rtl=@($rtlPkg)+$rtlCore+$rtlPipe;                                   Pattern="RESULT.*PASSED|RESULT.*FAILED" },
-    @{ Name="SoC Integration";  Src="tb_soc.sv";            Rtl=@($rtlPkg)+$rtlCore+$rtlPipe+$rtlPeriph+@($rtlSocTop);          Pattern="PASSED|FAILED" }
+    @{ Name="ALU";              Src="tb_alu.sv";            Rtl=@($rtlPkg)+@($rtlCore[0]) },
+    @{ Name="Register File";    Src="tb_register_file.sv";  Rtl=@($rtlPkg)+@($rtlCore[1]) },
+    @{ Name="Imm Generator";    Src="tb_imm_generator.sv";  Rtl=@($rtlPkg)+@($rtlCore[2]) },
+    @{ Name="Decoder";          Src="tb_decoder.sv";        Rtl=@($rtlPkg)+@($rtlCore[3]) },
+    @{ Name="Branch Unit";      Src="tb_branch_unit.sv";    Rtl=@($rtlCore[4]) },
+    @{ Name="MultDiv (M-ext)";  Src="tb_multdiv.sv";        Rtl=@($rtlPkg)+@($rtlCore[7]) },
+    @{ Name="Single-Cycle CPU"; Src="tb_core_single.sv";    Rtl=@($rtlPkg)+$rtlCore+@("$projRoot\rtl\core\rvp_core_single.sv") },
+    @{ Name="Pipeline CPU";     Src="tb_core_pipeline.sv";  Rtl=$rtlPipelineAll },
+    @{ Name="RV32I Self-Check"; Src="tb_rv32ui_p_all.sv";   Rtl=$rtlPipelineAll },
+    @{ Name="SoC Integration";  Src="tb_soc.sv";            Rtl=$rtlSocAll }
 )
 
 $totalPass = 0
@@ -63,14 +76,58 @@ Write-Output " $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Output "============================================================"
 Write-Output ""
 
+# =============================================================================
+# Step 1: Generate hex files for performance benchmarks
+# =============================================================================
+Write-Output "============================================================"
+Write-Output " Step 1: Generate hex files (Python assembler)"
+Write-Output "============================================================"
+$assemblerScript = "$projRoot\sw\tests\rv_assembler.py"
+if (Test-Path $assemblerScript) {
+    & python $assemblerScript
+    if ($LASTEXITCODE -eq 0) {
+        Write-Output "  [OK] Hex files generated successfully"
+    } else {
+        Write-Output "  [WARN] Assembler returned error code $LASTEXITCODE"
+    }
+} else {
+    Write-Output "  [SKIP] Assembler not found: $assemblerScript"
+}
+
+# Verify hex files exist
+$hexFiles = @(
+    "perf_matmul.hex", "perf_matmul_opt.hex",
+    "perf_bubble.hex", "perf_bubble_opt.hex",
+    "perf_fib.hex", "perf_fib_opt.hex"
+)
+$hexMissing = $false
+foreach ($f in $hexFiles) {
+    if (!(Test-Path "$hexDir\$f")) {
+        Write-Output "  [MISSING] $f"
+        $hexMissing = $true
+    }
+}
+if (!$hexMissing) {
+    Write-Output "  [OK] All 6 hex files present"
+}
+Write-Output ""
+
+# =============================================================================
+# Step 2: Functional regression tests (10 modules)
+# =============================================================================
+Write-Output "============================================================"
+Write-Output " Step 2: Functional Regression Tests"
+Write-Output "============================================================"
+Write-Output ""
+
 Set-Location $tbDir
 
 foreach ($t in $tests) {
-    # 重建 work 库
+    # Recreate work library
     if (Test-Path work) { Remove-Item -Recurse -Force work }
     & "$ms\vlib.exe" work 2>&1 | Out-Null
 
-    # 编译
+    # Compile
     $compileArgs = @("-sv", "-work", "work") + $t.Rtl + $t.Src
     $compileOut = & $vlog @compileArgs 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -79,11 +136,15 @@ foreach ($t in $tests) {
         continue
     }
 
-    # 运行
+    # Run simulation
     $tbModule = $t.Src -replace '\.sv$',''
     $simOut = (& $vsim -c -do "run -all; quit -f" -lib work $tbModule 2>&1) | Out-String
     $result = ""
-    if ($simOut -match "ALL PASSED") {
+
+    # Check for load/design errors first
+    if ($simOut -match "Error loading design") {
+        $result = "FAILED"
+    } elseif ($simOut -match "ALL PASSED") {
         $result = "PASSED"
     } elseif ($simOut -match "FAILED: \d+ / \d+ tests") {
         $result = "FAILED"
@@ -93,8 +154,16 @@ foreach ($t in $tests) {
         $result = "FAILED"
     }
 
+    # Extract test count if available
+    $testCount = ""
+    if ($simOut -match "ALL PASSED\s+\((\d+)\s*tests?\)") {
+        $testCount = " ($($Matches[1]) tests)"
+    } elseif ($simOut -match "RESULT: ALL PASSED\s+\(gp\s*=\s*(\d+)\)") {
+        $testCount = " (gp=$($Matches[1]))"
+    }
+
     if ($result -eq "PASSED") {
-        Write-Output "  [ PASS ] $($t.Name)"
+        Write-Output "  [ PASS ] $($t.Name)$testCount"
         $totalPass++
     } elseif ($result -eq "FAILED") {
         Write-Output "  [ FAIL ] $($t.Name)"
@@ -107,36 +176,65 @@ foreach ($t in $tests) {
 
 Write-Output ""
 Write-Output "============================================================"
-Write-Output " Summary: $totalPass passed, $totalFail failed, $($tests.Count) total"
+Write-Output " Functional Summary: $totalPass passed, $totalFail failed, $($tests.Count) total"
 Write-Output "============================================================"
 Write-Output ""
 
 # =============================================================================
-# 性能测试（使用 run_perf.do，需要预先生成 hex 文件）
+# Step 3: Performance benchmark (tb_perf.sv, 6 benchmarks)
 # =============================================================================
-$hexDir = "$projRoot\sw\tests"
-if (Test-Path "$hexDir\perf_matmul.hex") {
+if (!$hexMissing) {
     Write-Output "============================================================"
-    Write-Output " Performance Benchmark (tb_perf.sv)"
+    Write-Output " Step 3: Performance Benchmark (tb_perf.sv)"
     Write-Output "============================================================"
-    # 切回项目根目录运行 do 脚本
+
+    # Switch to project root to run do script
     Set-Location $projRoot
     $env:HEX_DIR = $hexDir
+
+    # Run and capture output
     $perfOut = (& $vsim -c -do "do tb/run_perf.do" 2>&1) | Out-String
-    if ($perfOut -match "PASS.*所有") {
-        Write-Output "  [ PASS ] Performance Benchmark (3/3 data verified)"
+
+    # Print the full benchmark output (lines with numeric data)
+    $perfLines = $perfOut -split "`n"
+    foreach ($line in $perfLines) {
+        $trimmed = $line.Trim()
+        # Show lines with benchmark data
+        if ($trimmed -match "Benchmark:|Total Cycles|Instructions|Load-Use|Branch Flush|Branch/Jump|CPI|Stall Rate|Flush Rate|Branch Rate|PASS|FAIL|Halt Cycle|Data verification|Summary|MIPS|formula|HEX dir|Clock|Halt detect|Optimized|passed" -or
+            $trimmed -match "^#?\s*(Benchmark:|Total Cycles|Instructions|Load-Use|Branch Flush|Branch/Jump|CPI|Stall Rate|Flush Rate|Branch Rate|PASS|FAIL|Halt Cycle|Data verification|Summary|MIPS|formula|HEX dir|Clock|Halt detect|Optimized|passed)") {
+            # Strip leading "# " from ModelSim output
+            $clean = $trimmed -replace "^#\s*", ""
+            if ($clean.Length -gt 0) {
+                Write-Output "  $clean"
+            }
+        }
+    }
+
+    Write-Output ""
+
+    # Determine pass/fail
+    $perfResult = ""
+    $passCount = ""
+    if ($perfOut -match "(\d+)/6 PASS") {
+        $passCount = " ($($Matches[1])/6 verified)"
+    }
+    if ($perfOut -match "PASS:") {
+        $perfResult = "PASS"
         $totalPass++
     } elseif ($perfOut -match "FAIL") {
-        Write-Output "  [ FAIL ] Performance Benchmark"
+        $perfResult = "FAIL"
         $totalFail++
     } else {
-        Write-Output "  [ ??  ] Performance Benchmark (check output)"
+        $perfResult = "??"
+        $totalFail++
     }
+
+    Write-Output "  [ $perfResult ] Performance Benchmark$passCount"
     Write-Output ""
     Write-Output "============================================================"
     Write-Output " Final: $totalPass passed, $totalFail failed, $($tests.Count + 1) total"
     Write-Output "============================================================"
 } else {
-    Write-Output "[SKIP] Performance test: hex files not found in $hexDir"
-    Write-Output "       Run 'python sw\tests\rv_assembler.py' to generate hex files first."
+    Write-Output "[SKIP] Performance test: hex files missing."
+    Write-Output "       Run: python sw\tests\rv_assembler.py"
 }

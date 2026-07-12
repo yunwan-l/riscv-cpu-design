@@ -28,8 +28,10 @@ set top_module     "rvp_fpga_top"
 
 set filelist_path  "$project_root/config/rvp_core.f"
 set config_svh     "$project_root/config/rvp_config.svh"
+set configs_yaml   "$project_root/config/rvp_configs.yaml"
 set xdc_file       "$project_root/synth/vivado/rvp_nexys4.xdc"
 set firmware_src   "$project_root/firmware_piano.hex"
+set config_name    "phase2_full_rv32i"
 
 puts "============================================================================="
 puts " Create Piano Vivado Project"
@@ -50,6 +52,10 @@ if {![file exists $filelist_path]} {
 }
 if {![file exists $config_svh]} {
     puts "ERROR: Config header not found: $config_svh"
+    return
+}
+if {![file exists $configs_yaml]} {
+    puts "ERROR: Config YAML not found: $configs_yaml"
     return
 }
 if {![file exists $xdc_file]} {
@@ -126,9 +132,47 @@ set_property used_in_implementation  true [get_files $xdc_file]
 puts "  Added constraints: rvp_nexys4.xdc"
 
 # -----------------------------------------------------------------------------
-# 设置 Verilog 宏定义（与现有项目 phase2_full_rv32i 配置一致）
+# 从 YAML 读取配置（与 create_project.tcl 完全一致）
 # -----------------------------------------------------------------------------
-set verilog_defines "RVP_RV32E=0 RVP_RV32M=1 RVP_RV32C=0 RVP_ICacheEnable=0 RVP_DCacheEnable=0 RVP_ICacheReplacePolicy=0 RVP_DCacheReplacePolicy=0 RVP_Forwarding=0 RVP_BranchPredict=0 RVP_CacheStatsEnable=0"
+proc parse_config_yaml {yaml_path config_name} {
+    set fh [open $yaml_path r]
+    set lines [split [read $fh] "\n"]
+    close $fh
+
+    set in_config 0
+    set result [dict create]
+
+    foreach line $lines {
+        set trimmed [string trim $line]
+        if {$trimmed eq "" || [string index $trimmed 0] eq "#"} {
+            continue
+        }
+        if {![regexp {^\s} $line] && [regexp {^([\w]+):\s*$} $line -> name]} {
+            set in_config [expr {$name eq $config_name}]
+            continue
+        }
+        if {$in_config} {
+            if {[regexp {^\s*([A-Za-z_]\w*)\s*:\s*(.+?)\s*$} $line -> key val]} {
+                regsub {\s+#.*$} $val "" val
+                set val [string trim $val "\"' "]
+                dict set result $key $val
+            }
+        }
+    }
+    return $result
+}
+
+set config_params [parse_config_yaml $configs_yaml $config_name]
+puts "  Config: $config_name"
+
+# 生成 verilog defines: RVP_<KEY>=<VAL>（与 create_project.tcl 一致）
+set define_list [list]
+dict for {key val} $config_params {
+    set def_name "RVP_${key}"
+    lappend define_list "${def_name}=${val}"
+}
+set verilog_defines [join $define_list " "]
+
 set_property verilog_define $verilog_defines [get_filesets sources_1]
 puts "  Verilog defines: $verilog_defines"
 

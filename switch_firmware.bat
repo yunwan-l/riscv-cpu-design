@@ -3,7 +3,8 @@ setlocal enabledelayedexpansion
 
 echo ============================================================
 echo   RVP Processor - Test Firmware Switcher
-echo   Board: NEXYS4 DDR
+echo   Project: rvp_nexys4 (基础实验)
+echo   Board:  NEXYS4 DDR
 echo ============================================================
 echo.
 
@@ -36,6 +37,9 @@ echo Firmware source dir: %FWDIR%
 echo.
 echo Available test firmware:
 echo.
+echo   --- Integrated Test (SW selectable) ---
+echo   [0] all          - All 8 tests, SW[3:0] selects (DEFAULT)
+echo.
 echo   --- Visual Tests (LED) ---
 echo   [1] led_blink    - LED all blink (basic pipeline)
 echo   [2] pc_seq       - PC sequential increment (LED counter)
@@ -50,9 +54,12 @@ echo   [8] mem_uart     - Memory R/W test (UART hex output)
 echo   [9] muldiv_uart  - MUL/DIV/REM test (UART hex output)
 echo.
 
-set /p choice="Select firmware (1-9): "
+set /p choice="Select firmware (0-9): "
 
-if "%choice%"=="1" (
+if "%choice%"=="0" (
+    set "src=firmware_all.hex"
+    set "name=All Tests (SW selectable)"
+) else if "%choice%"=="1" (
     set "src=firmware_blink.hex"
     set "name=LED Blink"
 ) else if "%choice%"=="2" (
@@ -97,25 +104,52 @@ if not exist "%FWDIR%%src%" (
 )
 
 rem ============================================================
-rem Copy firmware.hex to ALL known locations
+rem Copy firmware.hex to rvp_nexys4 project locations ONLY
+rem NEVER touch build/vivado_piano/ (Pianooo's project)
 rem ============================================================
 set "COPIED=0"
 
-set "PROJFW=%BATDIR%build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
-if not exist "%PROJFW%" set "PROJFW=C:\rvp_proj\build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
-
+rem Location 1: synth/vivado/firmware.hex (xpr references this)
 copy /y "%FWDIR%%src%" "%FWDIR%firmware.hex" >nul 2>&1
 if not errorlevel 1 (
     echo [OK] %FWDIR%firmware.hex
     set "COPIED=1"
 )
 
+rem Location 2: build/vivado/rvp_nexys4.srcs/sources_1/imports/firmware.hex
+set "PROJFW=%BATDIR%build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
+if not exist "%PROJFW%" set "PROJFW=C:\rvp_proj\build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
 if exist "%PROJFW%" (
     copy /y "%FWDIR%%src%" "%PROJFW%" >nul 2>&1
     if not errorlevel 1 (
         echo [OK] %PROJFW%
         set "COPIED=1"
     )
+)
+
+rem Location 3: root firmware.hex
+set "ROOTFW=%BATDIR%firmware.hex"
+if not exist "%ROOTFW%" set "ROOTFW=C:\rvp_proj\firmware.hex"
+if exist "%ROOTFW%" (
+    copy /y "%FWDIR%%src%" "%ROOTFW%" >nul 2>&1
+    if not errorlevel 1 (
+        echo [OK] %ROOTFW%
+        set "COPIED=1"
+    )
+)
+
+rem ============================================================
+rem Clean up orphaned build/vivado/firmware.hex
+rem This file is NOT in the xpr source list but Vivado's $readmemh
+rem may find it and use the wrong firmware!
+rem ============================================================
+if exist "%BATDIR%build\vivado\firmware.hex" (
+    del /q "%BATDIR%build\vivado\firmware.hex" >nul 2>&1
+    echo [CLEANED] Deleted orphaned build\vivado\firmware.hex
+)
+if exist "C:\rvp_proj\build\vivado\firmware.hex" (
+    del /q "C:\rvp_proj\build\vivado\firmware.hex" >nul 2>&1
+    echo [CLEANED] Deleted orphaned C:\rvp_proj\build\vivado\firmware.hex
 )
 
 if "%COPIED%"=="0" (
@@ -127,9 +161,10 @@ if "%COPIED%"=="0" (
 echo.
 echo ============================================================
 echo   Firmware switched: %name%
+echo   Project: rvp_nexys4 ONLY (Piano project untouched)
 echo ============================================================
 echo.
-echo Next steps in Vivado:
+echo Next steps in Vivado (rvp_nexys4.xpr):
 echo   1. Tcl Console: reset_run synth_1
 echo   2. Run Synthesis ^> Implementation ^> Generate Bitstream
 echo   3. Open Hardware Manager ^> Program Device
@@ -139,5 +174,9 @@ echo   - Open MobaXterm, create Serial session
 echo   - Port: check Device Manager for COM number
 echo   - Baud rate: 115200, 8N1
 echo   - Press RESET on board after programming
+echo.
+echo For integrated test [0]:
+echo   - SW[3:0] selects test 0-8
+echo   - SW=0000: LED blink, SW=0001: PC seq, ... SW=1000: Muldiv UART
 echo.
 pause

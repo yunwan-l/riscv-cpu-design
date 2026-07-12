@@ -22,7 +22,8 @@ set fw_list [list \
     [list "firmware_muldiv.hex"   "MUL/DIV"] \
     [list "firmware_pipeline.hex" "Pipeline Demo"] \
     [list "firmware_counter.hex"  "CPU Counter"] \
-]
+    [list "firmware_piano.hex"    "Piano (UART note data)"] \
+)]
 
 # --- Determine script directory ---
 set script_dir "C:/rvp_proj/synth/vivado"
@@ -45,7 +46,7 @@ puts ""
 
 # --- Get user choice ---
 if {![info exists fw_choice]} {
-    puts -nonewline "Enter firmware number (1-10): "
+    puts -nonewline "Enter firmware number (1-11): "
     flush stdout
     set fw_choice [gets stdin]
 }

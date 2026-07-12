@@ -211,16 +211,17 @@ module rvp_soc #(
   );
 
   // =========================================================================
-  // Piano（硬件音符查表器）
+  // Piano（硬件音符查表器）—— 暂时注释，待 rvp_piano.sv 加入工程
   // =========================================================================
-  rvp_piano piano (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
-    .addr_i  (dbus_addr[3:0]),
-    .read_i  (dbus_read  && is_piano),
-    .write_i (dbus_write && is_piano),
-    .wdata_i (dbus_wdata),
-    .rdata_o (piano_rdata)
-  );
+  // rvp_piano piano (
+  //   .clk_i   (clk_i),
+  //   .rst_ni  (rst_ni),
+  //   .addr_i  (dbus_addr[3:0]),
+  //   .read_i  (dbus_read  && is_piano),
+  //   .write_i (dbus_write && is_piano),
+  //   .wdata_i (dbus_wdata),
+  //   .rdata_o (piano_rdata)
+  // );
+  assign piano_rdata = 32'b0;  // 未使用时返回 0
 
 endmodule : rvp_soc

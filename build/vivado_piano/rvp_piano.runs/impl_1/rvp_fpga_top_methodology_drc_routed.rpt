@@ -1,7 +1,7 @@
 Copyright 1986-2018 Xilinx, Inc. All Rights Reserved.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version : Vivado v.2018.3 (win64) Build 2405991 Thu Dec  6 23:38:27 MST 2018
-| Date         : Sat Jul 11 00:55:10 2026
+| Date         : Mon Jul 13 02:00:40 2026
 | Host         : Mizii running 64-bit major release  (build 9200)
 | Command      : report_methodology -file rvp_fpga_top_methodology_drc_routed.rpt -pb rvp_fpga_top_methodology_drc_routed.pb -rpx rvp_fpga_top_methodology_drc_routed.rpx
 | Design       : rvp_fpga_top
@@ -23,13 +23,14 @@ Table of Contents
           Floorplan: design_1
       Design limits: <entire design considered>
              Max violations: <unlimited>
-             Violations found: 270
+             Violations found: 271
 +----------+----------+-----------------------------------------------------------+------------+
 | Rule     | Severity | Description                                               | Violations |
 +----------+----------+-----------------------------------------------------------+------------+
 | SYNTH-5  | Warning  | Mapped onto distributed RAM because of timing constraints | 256        |
 | SYNTH-10 | Warning  | Wide multiplier                                           | 12         |
 | TIMING-9 | Warning  | Unknown CDC Logic                                         | 1          |
+| XDCB-1   | Warning  | Runtime intensive exceptions                              | 1          |
 | XDCB-5   | Warning  | Runtime inefficient way to find pin objects               | 1          |
 +----------+----------+-----------------------------------------------------------+------------+
 
@@ -1380,9 +1381,17 @@ Unknown CDC Logic
 One or more asynchronous Clock Domain Crossing has been detected between 2 clock domains through a set_false_path or a set_clock_groups or set_max_delay -datapath_only constraint but no double-registers logic synchronizer has been found on the side of the capture clock. It is recommended to run report_cdc for a complete and detailed CDC coverage. Please consider using XPM_CDC to avoid Critical severities
 Related violations: <none>
 
+XDCB-1#1 Warning
+Runtime intensive exceptions  
+The following constraint contains more than 10000 objects. To preserve runtime and memory performance, it is recommended to include minimum number of objects. Check whether this list can be simplified.
+-to = expands to 36395 design objects. 
+set_false_path -from [get_ports rst_n] -to [all_registers]
+C:/rvp_proj/synth/vivado/rvp_nexys4.xdc (Line: 135)
+Related violations: <none>
+
 XDCB-5#1 Warning
 Runtime inefficient way to find pin objects  
-The option 'objects : [get_pins -hier -filter {NAME =~ *clk_cnt_reg[1]/Q}]' of constraint 'create_generated_clock' uses inefficient query to find pin objects (see constraint position '2' in the Timing Constraint window in Vivado IDE). To reduce runtime, it is recommended to get the pins through the cell objects. Please refer to Using Constraints Guide (Constraints Efficiency). An example of optimal query is: get_pins -filter {REF_PIN_NAME=~yy*} -of_objects [get_cells -hierarchical xx*].
+The option 'objects : [get_pins -hier -filter {NAME =~ *clk_cnt_reg[2]/Q}]' of constraint 'create_generated_clock' uses inefficient query to find pin objects (see constraint position '2' in the Timing Constraint window in Vivado IDE). To reduce runtime, it is recommended to get the pins through the cell objects. Please refer to Using Constraints Guide (Constraints Efficiency). An example of optimal query is: get_pins -filter {REF_PIN_NAME=~yy*} -of_objects [get_cells -hierarchical xx*].
 Current XDC: C:/rvp_proj/synth/vivado/rvp_nexys4.xdc (Line: 27)
 Related violations: <none>
 

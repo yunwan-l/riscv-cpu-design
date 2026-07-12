@@ -17,6 +17,7 @@ proc create_report { reportName command } {
     send_msg_id runtcl-5 warning "$msg"
   }
 }
+set_param xicom.use_bs_reader 1
 create_project -in_memory -part xc7a100tcsg324-1
 
 set_param project.singleFileAddWarning.threshold 0
@@ -43,11 +44,10 @@ read_verilog -library xil_defaultlib -sv {
   C:/rvp_proj/rtl/core/rvp_forward_unit.sv
   C:/rvp_proj/rtl/periph/rvp_gpio.sv
   C:/rvp_proj/rtl/core/rvp_hazard_unit.sv
-  C:/rvp_proj/rtl/cache/rvp_icache.sv
+  C:/rvp_proj/rtl/cache/rvp_icache_pmru8.sv
   C:/rvp_proj/rtl/core/rvp_imm_generator.sv
   C:/rvp_proj/rtl/core/rvp_instr_mem.sv
   C:/rvp_proj/rtl/core/rvp_multdiv.sv
-  C:/rvp_proj/rtl/periph/rvp_piano.sv
   C:/rvp_proj/rtl/core/rvp_pipeline_regs.sv
   C:/rvp_proj/rtl/core/rvp_register_file.sv
   C:/rvp_proj/rtl/rvp_soc.sv

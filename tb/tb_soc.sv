@@ -111,7 +111,7 @@ module tb_soc;
             // Direct instruction memory initialization
 
     #1; // wait for memory init
-        $readmemh("../sw/tests/soc_test_words.hex", dut.cpu.icache.backing_mem.mem);
+        $readmemh("../sw/tests/soc_test_words.hex", dut.cpu.icache.bm.mem);
 
 
 

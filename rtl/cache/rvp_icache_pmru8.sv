@@ -72,6 +72,7 @@ module rvp_icache_pmru8 #(
     logic [31:0] bram_instr_b;
     logic [11:0] bram_addr_a;
     logic [11:0] bram_addr_b;
+    logic [31:0] pf_read_addr;  // forward declare (used by BRAM port B)
 
     assign bram_addr_a = addr_i[13:2];
     assign bram_addr_b = pf_read_addr[13:2];
@@ -143,6 +144,7 @@ module rvp_icache_pmru8 #(
     // ============================================================
     logic [WAYS-1:0] hit_way;
     logic            ch;
+    logic            pf_hit;  // forward declare (used by hit_o assign)
 
     always_comb begin
         for (int w = 0; w < WAYS; w++)
@@ -168,7 +170,6 @@ module rvp_icache_pmru8 #(
     logic        pf_valid  [0:PF_DEPTH-1];
     logic [1:0]  pf_life   [0:PF_DEPTH-1];
     logic [PF_W-1:0] pf_wr_ptr;
-    logic        pf_hit;
     logic [PF_W-1:0] pf_hit_idx;
 
     always_comb begin
@@ -188,7 +189,6 @@ module rvp_icache_pmru8 #(
     pf_state_t   pf_state;
     logic [FCW-1:0] pf_fill_cnt;
     logic [31:0] pf_base_addr;
-    logic [31:0] pf_read_addr;
 
     // pf_read_addr = pf_base_addr + (pf_fill_cnt + 1) * 4
     assign pf_read_addr = pf_base_addr + {{(28-FCW){1'b0}}, pf_fill_cnt, 2'b00} + 32'd4;

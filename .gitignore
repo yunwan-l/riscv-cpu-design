@@ -32,6 +32,10 @@ build/vivado/usage_statistics_*
 document/temp/
 document/log/*.log
 
+# Project-specific
+study/
+.workbuddy/
+
 # OS
 Thumbs.db
 .DS_Store

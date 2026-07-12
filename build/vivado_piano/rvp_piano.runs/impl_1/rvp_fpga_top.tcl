@@ -65,6 +65,7 @@ start_step write_bitstream
 set ACTIVE_STEP write_bitstream
 set rc [catch {
   create_msg_db write_bitstream.pb
+  set_param xicom.use_bs_reader 1
   open_checkpoint rvp_fpga_top_routed.dcp
   set_property webtalk.parent_dir C:/rvp_proj/build/vivado_piano/rvp_piano.cache/wt [current_project]
   catch { write_mem_info -force rvp_fpga_top.mmi }
