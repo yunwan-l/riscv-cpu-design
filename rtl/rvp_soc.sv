@@ -10,6 +10,7 @@
 //   0x1001_0000 ~ 0x1001_FFFF  GPIO       (OUTPUT/INPUT)
 //   0x1002_0000 ~ 0x1002_FFFF  Timer      (COUNT/CTRL)
 //   0x1003_0000 ~ 0x1003_FFFF  性能计数器  (cycle/inst/stall/flush/branch/icache_hit/icache_miss)
+//   0x1004_0000 ~ 0x1004_FFFF  Piano      (NOTE/FREQ, 硬件音符查表)
 //
 // 总线协议：简单同步写 + 异步读（和 data_mem 一致）
 //   - 外设建议用 lw/sw 访问（字对齐）
@@ -67,16 +68,17 @@ module rvp_soc #(
   // =========================================================================
   // 地址译码：根据地址高 16 位选择外设
   // =========================================================================
-  logic is_ram, is_uart, is_gpio, is_timer, is_perf;
+  logic is_ram, is_uart, is_gpio, is_timer, is_perf, is_piano;
 
   assign is_ram   = (dbus_addr[31:16] == 16'h0000);
   assign is_uart  = (dbus_addr[31:16] == 16'h1000);
   assign is_gpio  = (dbus_addr[31:16] == 16'h1001);
   assign is_timer = (dbus_addr[31:16] == 16'h1002);
   assign is_perf  = (dbus_addr[31:16] == 16'h1003);
+  assign is_piano = (dbus_addr[31:16] == 16'h1004);
 
   // 各外设的读数据
-  logic [31:0] ram_rdata, uart_rdata, gpio_rdata, timer_rdata, perf_rdata;
+  logic [31:0] ram_rdata, uart_rdata, gpio_rdata, timer_rdata, perf_rdata, piano_rdata;
 
   // =========================================================================
   // 读数据多路选择
@@ -89,6 +91,7 @@ module rvp_soc #(
       16'h1001:  dbus_rdata = gpio_rdata;    // GPIO
       16'h1002:  dbus_rdata = timer_rdata;   // Timer
       16'h1003:  dbus_rdata = perf_rdata;    // 性能计数器
+      16'h1004:  dbus_rdata = piano_rdata;   // Piano
       default:   dbus_rdata = 32'b0;          // 未映射地址返回 0
     endcase
   end
@@ -205,6 +208,19 @@ module rvp_soc #(
     .write_i (dbus_write && is_timer),
     .wdata_i (dbus_wdata[1:0]),
     .rdata_o (timer_rdata)
+  );
+
+  // =========================================================================
+  // Piano（硬件音符查表器）
+  // =========================================================================
+  rvp_piano piano (
+    .clk_i   (clk_i),
+    .rst_ni  (rst_ni),
+    .addr_i  (dbus_addr[3:0]),
+    .read_i  (dbus_read  && is_piano),
+    .write_i (dbus_write && is_piano),
+    .wdata_i (dbus_wdata),
+    .rdata_o (piano_rdata)
   );
 
 endmodule : rvp_soc

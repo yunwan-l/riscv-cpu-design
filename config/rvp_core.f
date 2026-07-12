@@ -72,6 +72,7 @@ rtl/core/rvp_core_pipeline.sv
 rtl/periph/rvp_uart.sv
 rtl/periph/rvp_gpio.sv
 rtl/periph/rvp_timer.sv
+rtl/periph/rvp_piano.sv
 
 // ============================================================================
 // 6. SoC Top-Level

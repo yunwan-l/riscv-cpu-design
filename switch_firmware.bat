@@ -28,11 +28,6 @@ if exist "C:\rvp_proj\synth\vivado\firmware_blink.hex" (
 )
 
 echo ERROR: Cannot find firmware files!
-echo Searched:
-echo   %BATDIR%
-echo   %BATDIR%synth\vivado\
-echo   C:\rvp_proj\synth\vivado\
-echo.
 pause
 exit /b 1
 
@@ -41,19 +36,21 @@ echo Firmware source dir: %FWDIR%
 echo.
 echo Available test firmware:
 echo.
-echo   [1] led_blink    - LED all blink (original, verified)
+echo   --- Visual Tests (LED) ---
+echo   [1] led_blink    - LED all blink (basic pipeline)
 echo   [2] pc_seq       - PC sequential increment (LED counter)
-echo   [3] forward      - Pipeline forwarding (LED 0x0800 blink)
-echo   [4] loaduse      - Load-Use hazard (LED 0x00AA blink)
-echo   [5] branch       - Branch jump (LED 0x000F/0x00F0 alt)
-echo   [6] alu          - ALU all operations (8 ops display)
-echo   [7] mem          - Memory R/W (byte/half/word sign-ext)
-echo   [8] muldiv       - MUL/DIV/REM (M-extension)
-echo   [9] pipeline     - Pipeline demo (4-stage cycle)
-echo   [10] counter     - CPU auto-increment counter (LEDs count up 0,1,2...)
+echo   [3] forward      - Pipeline forwarding (LED 11 blink)
+echo   [4] loaduse      - Load-Use hazard (LED 0xAA blink)
+echo   [5] counter      - CPU auto-increment (LED binary count)
+echo.
+echo   --- UART Tests (serial output) ---
+echo   [6] branch_uart  - Branch/Jump test (UART PASS/FAIL)
+echo   [7] alu_uart     - ALU all operations (UART hex output)
+echo   [8] mem_uart     - Memory R/W test (UART hex output)
+echo   [9] muldiv_uart  - MUL/DIV/REM test (UART hex output)
 echo.
 
-set /p choice="Select firmware (1-10): "
+set /p choice="Select firmware (1-9): "
 
 if "%choice%"=="1" (
     set "src=firmware_blink.hex"
@@ -68,23 +65,20 @@ if "%choice%"=="1" (
     set "src=firmware_loaduse.hex"
     set "name=Load-Use"
 ) else if "%choice%"=="5" (
-    set "src=firmware_branch.hex"
-    set "name=Branch"
-) else if "%choice%"=="6" (
-    set "src=firmware_alu.hex"
-    set "name=ALU"
-) else if "%choice%"=="7" (
-    set "src=firmware_mem.hex"
-    set "name=Memory"
-) else if "%choice%"=="8" (
-    set "src=firmware_muldiv.hex"
-    set "name=MUL/DIV"
-) else if "%choice%"=="9" (
-    set "src=firmware_pipeline.hex"
-    set "name=Pipeline Demo"
-) else if "%choice%"=="10" (
     set "src=firmware_counter.hex"
     set "name=CPU Counter"
+) else if "%choice%"=="6" (
+    set "src=firmware_branch_uart.hex"
+    set "name=Branch UART"
+) else if "%choice%"=="7" (
+    set "src=firmware_alu_uart.hex"
+    set "name=ALU UART"
+) else if "%choice%"=="8" (
+    set "src=firmware_mem_uart.hex"
+    set "name=Memory UART"
+) else if "%choice%"=="9" (
+    set "src=firmware_muldiv_uart.hex"
+    set "name=MUL/DIV UART"
 ) else (
     echo ERROR: Invalid choice
     pause
@@ -107,28 +101,21 @@ rem Copy firmware.hex to ALL known locations
 rem ============================================================
 set "COPIED=0"
 
-rem 1. Source directory
+set "PROJFW=%BATDIR%build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
+if not exist "%PROJFW%" set "PROJFW=C:\rvp_proj\build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
+
 copy /y "%FWDIR%%src%" "%FWDIR%firmware.hex" >nul 2>&1
 if not errorlevel 1 (
     echo [OK] %FWDIR%firmware.hex
     set "COPIED=1"
 )
 
-rem 2. Vivado project internal copy
-set "PROJFW=%BATDIR%build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
-if not exist "%PROJFW%" set "PROJFW=C:\rvp_proj\build\vivado\rvp_nexys4.srcs\sources_1\imports\firmware.hex"
 if exist "%PROJFW%" (
     copy /y "%FWDIR%%src%" "%PROJFW%" >nul 2>&1
     if not errorlevel 1 (
         echo [OK] %PROJFW%
         set "COPIED=1"
     )
-)
-
-rem 3. rvp_build directory
-if exist "C:\Users\13691\AppData\Roaming\Xilinx\Vivado\rvp_build\firmware.hex" (
-    copy /y "%FWDIR%%src%" "C:\Users\13691\AppData\Roaming\Xilinx\Vivado\rvp_build\firmware.hex" >nul 2>&1
-    if not errorlevel 1 echo [OK] rvp_build\firmware.hex
 )
 
 if "%COPIED%"=="0" (
@@ -142,14 +129,15 @@ echo ============================================================
 echo   Firmware switched: %name%
 echo ============================================================
 echo.
-echo IMPORTANT: In Vivado, you MUST do this before re-synthesis:
-echo   Option A: Right-click synth_1 -^> Reset Run
-echo   Option B: Tcl Console: reset_run synth_1
+echo Next steps in Vivado:
+echo   1. Tcl Console: reset_run synth_1
+echo   2. Run Synthesis ^> Implementation ^> Generate Bitstream
+echo   3. Open Hardware Manager ^> Program Device
 echo.
-echo Then:
-echo   1. Run Synthesis
-echo   2. Run Implementation
-echo   3. Generate Bitstream
-echo   4. Open Hardware Manager -^> Program Device
+echo For UART tests [6-9]:
+echo   - Open MobaXterm, create Serial session
+echo   - Port: check Device Manager for COM number
+echo   - Baud rate: 115200, 8N1
+echo   - Press RESET on board after programming
 echo.
 pause
