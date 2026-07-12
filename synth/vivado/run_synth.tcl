@@ -76,10 +76,16 @@ puts "============================================"
 puts $util
 
 # 提取关键资源数据
-set lut_count  [get_property SLICE_LUTS [get_utilization -type LUT]]
-set ff_count   [get_property SLICE_REGISTERS [get_utilization -type REG]]
-set bram_count [get_property BLOCKRAM [get_utilization -type BRAM]]
-set dsp_count  [get_property DSP [get_utilization -type DSP]]
+proc parse_util {text pattern} {
+    foreach line [split $text "\n"] {
+        if {[regexp $pattern $line -> v]} {return [string trim $v]}
+    }
+    return "N/A"
+}
+set lut_count  [parse_util $util {Slice LUTs.*\|\s*(\d+)}]
+set ff_count   [parse_util $util {Slice Registers.*\|\s*(\d+)}]
+set bram_count [parse_util $util {Block RAM Tile.*\|\s*(\d+)}]
+set dsp_count  [parse_util $util {DSPs.*\|\s*(\d+)}]
 
 puts "\n============================================"
 puts " Key Resource Summary"
@@ -102,8 +108,8 @@ puts "============================================"
 puts $timing_summary
 
 # 提取 WNS (Worst Negative Slack)
-# clk_soc 域周期为 40ns (25MHz)，sys_clk_pin 域周期为 10ns (100MHz)
-# 关键路径在 clk_soc 域，使用 40ns 计算 Fmax
+# clk_soc 域周期为 80ns (12.5MHz)，sys_clk_pin 域周期为 10ns (100MHz)
+# 关键路径在 clk_soc 域，使用 80ns 计算 Fmax
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1]]
 if {$wns eq ""} {
     set wns "N/A"
@@ -114,8 +120,8 @@ puts " Timing Summary"
 puts "============================================"
 puts "  WNS (Worst Negative Slack): $wns ns"
 if {$wns ne "N/A" && $wns >= 0} {
-    # clk_soc 域：周期 40ns (25MHz)，Fmax = 1000 / (40 - WNS)
-    set fmax [expr {1000.0 / (40.0 - $wns)}]
+    # clk_soc 域：周期 80ns (12.5MHz)，Fmax = 1000 / (80 - WNS)
+    set fmax [expr {1000.0 / (80.0 - $wns)}]
     puts "  Estimated Fmax (clk_soc): [format "%.2f" $fmax] MHz"
 } else {
     puts "  Timing not met (or no timing paths)"
@@ -158,8 +164,8 @@ if {$impl_status eq "route_design Complete!"} {
     puts "============================================"
     puts "  Post-Impl WNS: $wns_impl ns"
     if {$wns_impl ne "" && $wns_impl >= 0} {
-        set fmax_impl [expr {1000.0 / (40.0 - $wns_impl)}]
-        puts "  Final Fmax (clk_soc, 25MHz base): [format "%.2f" $fmax_impl] MHz"
+        set fmax_impl [expr {1000.0 / (80.0 - $wns_impl)}]
+        puts "  Final Fmax (clk_soc, 12.5MHz base): [format "%.2f" $fmax_impl] MHz"
         puts "  Throughput (ideal CPI=1): [format "%.2f" $fmax_impl] MIPS"
     } else {
         puts "  Timing NOT met after implementation"

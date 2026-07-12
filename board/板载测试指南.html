@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PMRU8 I-Cache 板载测试完整指南</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --text-bright: #f0f6fc;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --yellow: #d29922;
+            --red: #f85149;
+            --code-bg: #1c2128;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 0;
+        }
+        .container { max-width: 960px; margin: 0 auto; padding: 40px 20px; }
+        h1 {
+            font-size: 2em;
+            color: var(--text-bright);
+            text-align: center;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid var(--border);
+        }
+        .subtitle { text-align: center; color: var(--accent); font-size: 1.1em; margin-bottom: 32px; }
+        h2 {
+            color: var(--text-bright);
+            font-size: 1.5em;
+            margin: 40px 0 16px;
+            padding: 12px 16px;
+            background: linear-gradient(90deg, #1c2128, transparent);
+            border-left: 4px solid var(--accent);
+            border-radius: 4px;
+        }
+        h3 {
+            color: var(--accent);
+            font-size: 1.2em;
+            margin: 24px 0 12px;
+        }
+        p { margin: 8px 0; }
+        ul { padding-left: 20px; margin: 8px 0; }
+        li { margin: 4px 0; }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 16px 0;
+        }
+        .step {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 16px 0;
+            position: relative;
+        }
+        .step-num {
+            position: absolute;
+            top: -12px;
+            left: 16px;
+            background: var(--accent);
+            color: #fff;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        code {
+            font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+            background: var(--code-bg);
+            color: #79c0ff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            padding: 0;
+            color: #e6edf3;
+            font-size: 0.85em;
+            line-height: 1.5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+        th {
+            background: #21262d;
+            color: var(--text-bright);
+            font-weight: 600;
+        }
+        td { color: var(--text); }
+        .warn {
+            background: #2d1b00;
+            border: 1px solid var(--yellow);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin: 12px 0;
+        }
+        .warn::before { content: "⚠ "; }
+        .ok {
+            background: #0d2818;
+            border: 1px solid var(--green);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin: 12px 0;
+        }
+        .ok::before { content: "✓ "; }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        .badge-blue { background: #1f6feb33; color: var(--accent); border: 1px solid var(--accent); }
+        .badge-green { background: #23863633; color: var(--green); border: 1px solid var(--green); }
+        .badge-yellow { background: #d2992233; color: var(--yellow); border: 1px solid var(--yellow); }
+        .file-tree {
+            font-family: monospace;
+            font-size: 0.85em;
+            line-height: 1.6;
+        }
+        .highlight { color: var(--accent); font-weight: 600; }
+        .ascii { font-family: monospace; white-space: pre; line-height: 1.4; }
+        .toc {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 24px 0;
+        }
+        .toc a { color: var(--accent); text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+<h1>PMRU8 I-Cache 板载测试完整指南</h1>
+<p class="subtitle">Nexys4 DDR (Artix-7 XC7A100T) — 从综合到观察的完整流程</p>
+
+<div class="toc">
+    <strong>目录</strong>
+    <ul>
+        <li><a href="#overview">测试方案总览</a></li>
+        <li><a href="#rtl-changes">RTL 修改清单</a></li>
+        <li><a href="#step1">步骤 1: 生成测试程序</a></li>
+        <li><a href="#step2">步骤 2: Vivado 综合</a></li>
+        <li><a href="#step3">步骤 3: 烧录到板子</a></li>
+        <li><a href="#observe-led">观察方法 A: LED 数码管</a></li>
+        <li><a href="#observe-uart">观察方法 B: UART 串口</a></li>
+        <li><a href="#test-programs">测试程序说明</a></li>
+        <li><a href="#troubleshoot">常见问题</a></li>
+    </ul>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="overview">测试方案总览</h2>
+<!-- ===================================================================== -->
+
+<div class="card">
+<p><strong>核心思路</strong>：程序在 FPGA 上运行特定指令访问模式，I-Cache 的命中/未命中计数器通过两种方式输出：</p>
+<table>
+<tr><th>方法</th><th>所需设备</th><th>显示内容</th><th>精度</th></tr>
+<tr><td><span class="badge badge-blue">A: 数码管 + LED</span></td><td>仅需板子</td><td>命中/未命中次数 (32位十六进制)</td><td>精确计数</td></tr>
+<tr><td><span class="badge badge-green">B: UART 串口</span></td><td>板子 + USB 线 + PC</td><td>命中/未命中 delta + 命中率</td><td>精确 + 自动计算</td></tr>
+</table>
+<p>两种方法可以<strong>同时使用</strong>，互不冲突。</p>
+</div>
+
+<div class="card">
+<h3>观察原理</h3>
+<table>
+<tr><th>开关设置</th><th>数码管显示</th><th>说明</th></tr>
+<tr><td><code>SW[15:14] = 00</code></td><td>PC 值</td><td>原始调试模式</td></tr>
+<tr><td><code>SW[15:14] = 01</code></td><td>hit_count</td><td>I-Cache 命中次数 (从复位开始累计)</td></tr>
+<tr><td><code>SW[15:14] = 10</code></td><td>miss_count</td><td>I-Cache 未命中次数</td></tr>
+<tr><td><code>SW[15:14] = 11</code></td><td>hit + miss</td><td>总访问次数</td></tr>
+</table>
+<p><strong>LED[15:0]</strong> 显示命中率 = <code>hit_delta × 1000 ÷ (hit_delta + miss_delta)</code>，范围 0-1000，对应 0.0%-100.0%。</p>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="rtl-changes">RTL 修改清单</h2>
+<!-- ===================================================================== -->
+
+<p>以下 4 个文件已修改，将 PMRU8 I-Cache 集成到 SoC 中并添加计数器观察接口：</p>
+
+<table>
+<tr><th>文件</th><th>修改内容</th></tr>
+<tr><td><code>rtl/core/rvp_instr_mem.sv</code></td><td>单端口 → 双端口 BRAM (Port A: 指令取指, Port B: 预取)</td></tr>
+<tr><td><code>config/rvp_core.f</code></td><td>文件列表中 <code>rvp_icache.sv</code> → <code>rvp_icache_pmru8.sv</code></td></tr>
+<tr><td><code>rtl/core/rvp_core_pipeline.sv</code></td><td>模块例化名 <code>rvp_icache</code> → <code>rvp_icache_pmru8</code></td></tr>
+<tr><td><code>rtl/rvp_soc.sv</code></td><td>新增 <code>icache_hit_o</code> / <code>icache_miss_o</code> 输出端口</td></tr>
+<tr><td><code>rtl/rvp_fpga_top.sv</code></td><td>数码管显示切换 (SW[15:14] 选择 hit/miss/PC)</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="step1">步骤 1: 生成测试程序</h2>
+<!-- ===================================================================== -->
+
+<div class="step">
+<span class="step-num">1</span>
+<h3>生成 hex 文件</h3>
+<p>运行 Python 脚本生成 4 个测试程序的 hex 文件：</p>
+<pre><code>cd "d:\Course resources for the second semester of sophomore year\riscv-cpu-design"
+python board\gen_board_test.py</code></pre>
+
+<p>将生成以下文件：</p>
+<table>
+<tr><th>文件</th><th>测试模式</th><th>大小</th><th>预期命中率</th></tr>
+<tr><td><code>board\test_loop.hex</code></td><td>紧凑循环 (4指令×10000次)</td><td>208 字节</td><td>≈100% (循环体在cache内)</td></tr>
+<tr><td><code>board\test_sequential.hex</code></td><td>顺序执行 (512条NOP)</td><td>2224 字节</td><td>高 (流式预取+旁路)</td></tr>
+<tr><td><code>board\test_branchy.hex</code></td><td>分支密集 (交替远跳转)</td><td>308 字节</td><td>中等 (分支目标分散)</td></tr>
+<tr><td><code>board\test_mixed.hex</code></td><td>混合模式 (顺序+循环+分支)</td><td>1036 字节</td><td>高 (综合表现)</td></tr>
+</table>
+</div>
+
+<div class="step">
+<span class="step-num">2</span>
+<h3>选择一个测试程序作为固件</h3>
+<p>选择要烧录的测试程序，复制到综合目录：</p>
+<pre><code># 例：烧录紧凑循环测试
+copy "board\test_loop.hex" "synth\vivado\firmware.hex"
+
+# 或烧录顺序执行测试
+copy "board\test_sequential.hex" "synth\vivado\firmware.hex"
+
+# 或烧录分支密集测试
+copy "board\test_branchy.hex" "synth\vivado\firmware.hex"
+
+# 或烧录混合模式测试
+copy "board\test_mixed.hex" "synth\vivado\firmware.hex"</code></pre>
+
+<div class="warn">
+<p><strong>每次只烧一个测试程序</strong>。换测试时需要重新综合+烧录。</p>
+</div>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="step2">步骤 2: Vivado 综合</h2>
+<!-- ===================================================================== -->
+
+<div class="step">
+<span class="step-num">3</span>
+<h3>打开 Vivado 并运行综合</h3>
+
+<p>方法一：使用 TCL 脚本（推荐）</p>
+<pre><code># 在 Vivado Tcl Console 中执行：
+cd "d:/Course resources for the second semester of sophomore year/riscv-cpu-design/synth/vivado"
+source run_direct.tcl</code></pre>
+
+<p>方法二：手动操作</p>
+<ol>
+<li>打开 Vivado</li>
+<li>创建新项目或打开现有项目</li>
+<li>添加源文件：使用 <code>config/rvp_core.f</code> 中的文件列表</li>
+<li>添加约束文件：<code>synth/vivado/rvp_nexys4.xdc</code></li>
+<li>确保 <code>firmware.hex</code> 已在 <code>rtl/core/</code> 目录（run_direct.tcl 会自动复制）</li>
+<li>运行 Synthesis → Implementation → Generate Bitstream</li>
+</ol>
+</div>
+
+<div class="step">
+<span class="step-num">4</span>
+<h3>检查资源使用</h3>
+<p>综合完成后，检查资源利用率报告：</p>
+<pre><code># 预期资源使用：
+LUT:   ~2000-3000 / 63400   (3-5%)
+FF:    ~1500-2000 / 126800  (1-2%)
+BRAM:  2 / 135             (1.5%)  ← I-Cache + 指令存储器
+DSP:   0-1 / 240           (0%)    ← 乘法器
+IOB:   34 / 210            (16%)   ← 固定引脚</code></pre>
+
+<div class="ok">
+<p>所有资源使用率远低于板子上限，<strong>绝不会损坏板子</strong>。</p>
+</div>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="step3">步骤 3: 烧录到板子</h2>
+<!-- ===================================================================== -->
+
+<div class="step">
+<span class="step-num">5</span>
+<h3>连接板子</h3>
+<ol>
+<li>用 USB 线连接 Nexys4 DDR 的 PROG/UART 端口（J6）到电脑</li>
+<li>打开板子电源开关（POWER 开关拨到 ON）</li>
+<li>确认板子上的 DONE LED 亮起（表示 FPGA 配置完成，如果之前烧过）</li>
+<li>FPGA MODE 跳线设为 JTAG（M[2:0] = 000）</li>
+</ol>
+</div>
+
+<div class="step">
+<span class="step-num">6</span>
+<h3>烧录 Bitstream</h3>
+<ol>
+<li>打开 Vivado Hardware Manager</li>
+<li>Open Target → Auto Connect（应看到 xc7a100t）</li>
+<li>右键器件 → Program Device → 选择生成的 .bit 文件</li>
+<li>点击 Program，等待烧录完成</li>
+</ol>
+
+<p>烧录后，FPGA 立即开始运行测试程序。程序执行完成后会进入死循环，LED 和数码管显示最终结果。</p>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="observe-led">观察方法 A: LED 数码管</h2>
+<!-- ===================================================================== -->
+
+<div class="card">
+<h3>读取命中率 (LED)</h3>
+<p>程序运行结束后，<strong>LED[15:0]</strong> 显示命中率：</p>
+<table>
+<tr><th>LED 显示值 (十六进制)</th><th>十进制</th><th>命中率</th></tr>
+<tr><td><code>0x3E8</code></td><td>1000</td><td>100.0%</td></tr>
+<tr><td><code>0x3E0</code></td><td>992</td><td>99.2%</td></tr>
+<tr><td><code>0x3D0</code></td><td>976</td><td>97.6%</td></tr>
+<tr><td><code>0x350</code></td><td>848</td><td>84.8%</td></tr>
+<tr><td><code>0x000</code></td><td>0</td><td>0.0%</td></tr>
+</table>
+<p>换算公式：<strong>命中率 = LED值 ÷ 10</strong> (百分比)</p>
+</div>
+
+<div class="card">
+<h3>读取精确命中/未命中次数 (数码管)</h3>
+<p>通过拨码开关 SW[15:14] 切换数码管显示内容：</p>
+
+<h4>看命中次数</h4>
+<ol>
+<li>将 <code>SW[15]</code> 拨到下方 (0)，<code>SW[14]</code> 拨到上方 (1)</li>
+<li>数码管显示 8 位十六进制数 = hit_count</li>
+<li>例如显示 <code>00003E80</code> = 16000 次命中</li>
+</ol>
+
+<h4>看未命中次数</h4>
+<ol>
+<li>将 <code>SW[15]</code> 拨到上方 (1)，<code>SW[14]</code> 拨到下方 (0)</li>
+<li>数码管显示 8 位十六进制数 = miss_count</li>
+<li>例如显示 <code>00000050</code> = 80 次未命中</li>
+</ol>
+
+<h4>看总访问次数</h4>
+<ol>
+<li>将 <code>SW[15]</code> 和 <code>SW[14]</code> 都拨到上方 (1)</li>
+<li>数码管显示 hit_count + miss_count</li>
+</ol>
+
+<div class="ok">
+<p>手动计算命中率：<code>hit_count ÷ (hit_count + miss_count) × 100%</code></p>
+</div>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="observe-uart">观察方法 B: UART 串口</h2>
+<!-- ===================================================================== -->
+
+<div class="card">
+<h3>串口设置</h3>
+<table>
+<tr><th>参数</th><th>值</th></tr>
+<tr><td>波特率</td><td>115200</td></tr>
+<tr><td>数据位</td><td>8</td></tr>
+<tr><td>停止位</td><td>1</td></tr>
+<tr><td>校验</td><td>无</td></tr>
+<tr><td>流控</td><td>无</td></tr>
+</table>
+<p>板子通过 USB-UART 桥接，在电脑上表现为一个 COM 口（设备管理器中查看）。</p>
+</div>
+
+<div class="card">
+<h3>使用 Python 接收脚本</h3>
+
+<p>1. 安装依赖：</p>
+<pre><code>pip install pyserial</code></pre>
+
+<p>2. 运行接收脚本：</p>
+<pre><code>cd "d:\Course resources for the second semester of sophomore year\riscv-cpu-design"
+
+# 自动查找串口
+python board\board_uart_rx.py
+
+# 或手动指定 COM 口
+python board\board_uart_rx.py COM3</code></pre>
+
+<p>3. 按下板子的 RESET 按钮（CPU_RESETN），重新运行测试程序</p>
+
+<p>4. 脚本会自动接收并显示结果：</p>
+<pre><code>PMRU8 I-Cache 板载测试接收器
+==================================================
+串口: COM3
+波特率: 115200
+等待数据... (按 Ctrl+C 退出)
+
+时间          测试类型                   命中     未命中    命中率
+------------ ------------------------- -------- -------- --------
+14:23:05     紧凑循环 (Loop)             40003        4    99.9%
+14:23:06     顺序执行 (Sequential)      51250       30    99.9%
+14:23:07     分支密集 (Branchy)          6020       55    99.1%
+14:23:08     混合模式 (Mixed)            7150       42    99.4%</code></pre>
+</div>
+
+<div class="card">
+<h3>UART 数据协议</h3>
+<p>每个测试结果发送 11 字节：</p>
+<pre><code>偏移  字节数  内容         说明
+ 0     1     标记字节     'L'=循环 'S'=顺序 'B'=分支 'M'=混合
+ 1     4     hit_delta    命中次数增量 (大端序)
+ 5     4     miss_delta   未命中次数增量 (大端序)
+ 9     1     0x0A         换行符</code></pre>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="test-programs">测试程序说明</h2>
+<!-- ===================================================================== -->
+
+<div class="card">
+<h3>1. 紧凑循环 (test_loop.hex)</h3>
+<p><strong>访问模式</strong>：4 条 NOP 指令的循环体，执行 10000 次</p>
+<p><strong>地址范围</strong>：仅约 20 字节的循环体，完全在 8 路 cache 的同一组中</p>
+<p><strong>预期结果</strong>：第一次迭代可能 miss（冷启动），之后全部 hit。命中率 ≈ 99.9%+</p>
+<p><strong>测试意义</strong>：验证 PMRU 的 temporal locality 保护能力</p>
+</div>
+
+<div class="card">
+<h3>2. 顺序执行 (test_sequential.hex)</h3>
+<p><strong>访问模式</strong>：512 条连续 NOP 指令，PC 线性递增</p>
+<p><strong>地址范围</strong>：2048 字节，与 cache 容量相同</p>
+<p><strong>预期结果</strong>：流式预取提前加载指令，流式旁路在 16 次顺序访问后跳过 cache。命中率取决于预取命中率</p>
+<p><strong>测试意义</strong>：验证 16 入口流式预取 + 流式旁路的效果</p>
+</div>
+
+<div class="card">
+<h3>3. 分支密集 (test_branchy.hex)</h3>
+<p><strong>访问模式</strong>：交替 BEQ 跳转到相隔 64 字节的地址，执行 100 次</p>
+<p><strong>地址范围</strong>：跨度约 400 字节，涉及多个 cache 组</p>
+<p><strong>预期结果</strong>：分支目标首次 miss，后续可能 hit（如果在 cache 中）。命中率取决于分支目标分布</p>
+<p><strong>测试意义</strong>：验证 PMRU 对非顺序访问的处理能力</p>
+</div>
+
+<div class="card">
+<h3>3. 混合模式 (test_mixed.hex)</h3>
+<p><strong>访问模式</strong>：200 条顺序 + 500 次紧凑循环 + 50 次分支</p>
+<p><strong>地址范围</strong>：约 1000 字节，部分在 cache 中</p>
+<p><strong>预期结果</strong>：综合三种模式的特征，命中率应该较高</p>
+<p><strong>测试意义</strong>：模拟真实程序的混合访问模式</p>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="troubleshoot">常见问题</h2>
+<!-- ===================================================================== -->
+
+<div class="card">
+<h3>Q: 数码管不亮 / 全灭</h3>
+<p>A: 检查 <code>SW[15:14]</code> 是否设置正确。设置为 <code>00</code> 可看 PC 值。如果 PC 值也不显示，检查 FPGA 是否烧录成功。</p>
+</div>
+
+<div class="card">
+<h3>Q: LED 全灭 / 全亮</h3>
+<p>A: 程序可能还在运行中（未到报告代码），或者程序已跑飞。按 RESET 按钮重新运行。如果 LED 全亮 (0xFFFF)，说明除零错误，可能计数器都为 0。</p>
+</div>
+
+<div class="card">
+<h3>Q: UART 接收不到数据</h3>
+<p>A: 依次检查：</p>
+<ol>
+<li>USB 线是否连接到 PROG/UART 端口 (J6)，不是 JTAG-only 端口</li>
+<li>设备管理器中是否出现 COM 口（可能需要安装 FTDI 驱动）</li>
+<li>波特率是否为 115200</li>
+<li>程序是否执行到了 UART 发送代码（LED 应显示非零值）</li>
+<li>按 RESET 重新运行程序</li>
+</ol>
+</div>
+
+<div class="card">
+<h3>Q: 综合报错找不到 firmware.hex</h3>
+<p>A: 确保 <code>firmware.hex</code> 已复制到 <code>synth/vivado/</code> 目录。<code>run_direct.tcl</code> 会自动将其复制到 <code>rtl/core/</code>。</p>
+<pre><code>copy "board\test_loop.hex" "synth\vivado\firmware.hex"</code></pre>
+</div>
+
+<div class="card">
+<h3>Q: 综合后 BRAM 使用为 0</h3>
+<p>A: 这是正常的——如果 <code>firmware.hex</code> 为空或不存在，Vivado 会优化掉存储器。确保 hex 文件非空且格式正确（每行一个 8 位十六进制数）。</p>
+</div>
+
+<div class="card">
+<h3>Q: 想换一个测试程序怎么办</h3>
+<p>A: 不需要重新修改 RTL，只需要：</p>
+<pre><code># 1. 复制新的 hex 文件
+copy "board\test_sequential.hex" "synth\vivado\firmware.hex"
+
+# 2. 在 Vivado 中重新综合 + 烧录
+# (Run Synthesis → Run Implementation → Generate Bitstream → Program)</code></pre>
+</div>
+
+<!-- ===================================================================== -->
+<h2>文件清单</h2>
+<!-- ===================================================================== -->
+
+<div class="card file-tree">
+board/
+├── gen_board_test.py      ← 测试程序生成器 (Python RISC-V 汇编器)
+├── board_uart_rx.py       ← UART 串口接收器
+├── test_loop.hex          ← 紧凑循环测试 (52 条指令)
+├── test_sequential.hex    ← 顺序执行测试 (556 条指令)
+├── test_branchy.hex       ← 分支密集测试 (77 条指令)
+└── test_mixed.hex         ← 混合模式测试 (259 条指令)
+
+rtl/
+├── cache/rvp_icache_pmru8.sv  ← PMRU8 I-Cache (8路+预取+旁路)
+├── core/rvp_instr_mem.sv      ← 双端口 BRAM (已更新)
+├── core/rvp_core_pipeline.sv  ← CPU 流水线 (已更新例化名)
+├── rvp_soc.sv                  ← SoC (已添加计数器端口)
+└── rvp_fpga_top.sv             ← FPGA 顶层 (已添加数码管切换)
+
+config/
+└── rvp_core.f                  ← 文件列表 (已更新为 PMRU8)
+
+synth/vivado/
+├── run_direct.tcl              ← 综合脚本
+├── rvp_nexys4.xdc              ← 引脚约束
+└── firmware.hex                ← (需要复制测试 hex 到此)
+</div>
+
+</div>
+</body>
+</html>

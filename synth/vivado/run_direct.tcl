@@ -54,7 +54,7 @@ read_verilog -sv [list \
     [file join $project_root "rtl" "core" "rvp_forward_unit.sv"] \
     [file join $project_root "rtl" "periph" "rvp_gpio.sv"] \
     [file join $project_root "rtl" "core" "rvp_hazard_unit.sv"] \
-    [file join $project_root "rtl" "cache" "rvp_icache.sv"] \
+    [file join $project_root "rtl" "cache" "rvp_icache_pmru8.sv"] \
     [file join $project_root "rtl" "core" "rvp_imm_generator.sv"] \
     [file join $project_root "rtl" "core" "rvp_instr_mem.sv"] \
     [file join $project_root "rtl" "core" "rvp_multdiv.sv"] \
@@ -96,7 +96,7 @@ if {$synth_err} {
         puts "ERROR: Design was lost after synthesis error. Cannot continue."
         # 清理
         file delete -force [file join $project_root "rtl" "core" "firmware.hex"]
-        exit 1
+        return
     }
 } else {
     puts "Synthesis completed successfully."
@@ -135,7 +135,7 @@ if {$opt_err} {
     if {$d eq ""} {
         puts "ERROR: Design lost after opt_design."
         file delete -force [file join $project_root "rtl" "core" "firmware.hex"]
-        exit 1
+        return
     }
 }
 
@@ -152,7 +152,7 @@ if {$place_err} {
     if {$d eq ""} {
         puts "ERROR: Design lost after place_design."
         file delete -force [file join $project_root "rtl" "core" "firmware.hex"]
-        exit 1
+        return
     }
 }
 
@@ -169,7 +169,7 @@ if {$route_err} {
     if {$d eq ""} {
         puts "ERROR: Design lost after route_design."
         file delete -force [file join $project_root "rtl" "core" "firmware.hex"]
-        exit 1
+        return
     }
 }
 
@@ -223,8 +223,8 @@ catch {
     puts "============================================"
     puts "  WNS: $wns ns"
     if {$wns ne "" && $wns >= 0} {
-        set fmax [expr {1000.0 / (40.0 - $wns)}]
-        puts "  Fmax (clk_soc, 25MHz base): [format "%.2f" $fmax] MHz"
+        set fmax [expr {1000.0 / (80.0 - $wns)}]
+        puts "  Fmax (clk_soc, 12.5MHz base): [format "%.2f" $fmax] MHz"
     } else {
         puts "  Timing NOT met"
     }
@@ -255,7 +255,9 @@ catch {
 file delete -force [file join $project_root "rtl" "core" "firmware.hex"]
 puts "\nCleaned up temporary firmware.hex copy"
 
-catch {close_project}
+# 不关闭工程，方便用户继续操作（如打开 Hardware Manager 烧录）
+# catch {close_project}
 puts "\n============================================================================="
 puts " Direct synthesis flow complete."
+puts " Project kept open for Hardware Manager / further debugging."
 puts "============================================================================="

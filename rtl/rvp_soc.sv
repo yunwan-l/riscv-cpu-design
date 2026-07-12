@@ -17,11 +17,11 @@
 //
 // 参数：
 //   CLK_FREQ : SoC 时钟频率（Hz），用于 UART 波特率分频
-//              FPGA 上为 25MHz，仿真可为 50MHz 或 100MHz
+//              FPGA 上为 12.5MHz，仿真可为 50MHz 或 100MHz
 // =============================================================================
 
 module rvp_soc #(
-  parameter int CLK_FREQ = 25_000_000  // 25 MHz (FPGA 默认)
+  parameter int CLK_FREQ = 12_500_000  // 12.5 MHz (FPGA 默认)
 ) (
   input  logic        clk_i,
   input  logic        rst_ni,
@@ -34,7 +34,16 @@ module rvp_soc #(
   input  logic [15:0] sw_i,
 
   // 调试输出（仿真/调试用）
-  output logic [31:0] pc_dbg_o
+  output logic [31:0] pc_dbg_o,
+
+  // I-Cache 性能计数器直通（FPGA 顶层显示用）
+  output logic [31:0] icache_hit_o,
+  output logic [31:0] icache_miss_o,
+
+  // 快照寄存器输出（数码管显示用，与UART输出一致）
+  output logic [31:0] snap_hit_o,
+  output logic [31:0] snap_miss_o,
+  output logic [31:0] snap_total_o
 );
 
   import rvp_pkg::*;
@@ -132,6 +141,10 @@ module rvp_soc #(
     .icache_miss_o  (icache_miss_count)
   );
 
+  // 直通到顶层（FPGA 数码管显示用）
+  assign icache_hit_o   = icache_hit_count;
+  assign icache_miss_o  = icache_miss_count;
+
   // =========================================================================
   // Data RAM（8KB，DEPTH=2048 → ADDR_BITS=11 → 13位地址）
   // =========================================================================
@@ -167,15 +180,18 @@ module rvp_soc #(
   // GPIO
   // =========================================================================
   rvp_gpio gpio (
-    .clk_i   (clk_i),
-    .rst_ni  (rst_ni),
-    .addr_i  (dbus_addr[3:0]),
-    .read_i  (dbus_read  && is_gpio),
-    .write_i (dbus_write && is_gpio),
-    .wdata_i (dbus_wdata[15:0]),
-    .rdata_o (gpio_rdata),
-    .led_o   (led_o),
-    .sw_i    (sw_i)
+    .clk_i        (clk_i),
+    .rst_ni       (rst_ni),
+    .addr_i       (dbus_addr[4:0]),
+    .read_i       (dbus_read  && is_gpio),
+    .write_i      (dbus_write && is_gpio),
+    .wdata_i      (dbus_wdata[31:0]),
+    .rdata_o      (gpio_rdata),
+    .led_o        (led_o),
+    .sw_i         (sw_i),
+    .snap_hit_o   (snap_hit_o),
+    .snap_miss_o  (snap_miss_o),
+    .snap_total_o (snap_total_o)
   );
 
   // =========================================================================

@@ -122,8 +122,9 @@ module rvp_core_pipeline (
       if_pc <= if_pc_next;   // ????????????
   end
 
-  // I-Cache：直接映射指令缓存，后备存储为 rvp_instr_mem（BRAM）
-  rvp_icache icache (
+  // I-Cache：PMRU 8路组相联指令缓存 + 16入口流式预取 + 流式旁路
+  // 后备存储为 rvp_instr_mem（双端口 BRAM）
+  rvp_icache_pmru8 icache (
     .clk_i         (clk_i),
     .rst_ni        (rst_ni),
     .addr_i        (if_pc),

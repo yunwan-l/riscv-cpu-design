@@ -3,9 +3,13 @@
 // =============================================================================
 // 功能：
 //   1. 端口名匹配 Nexys4 DDR 的 XDC 约束文件
-//   2. 内部例化 rvp_soc（片上系统，含 I-Cache）
-//   3. 时钟分频：100MHz → 25MHz（保证 5 级流水线时序余量）
-//   4. 七段数码管动态扫描，显示 PC 值低 32 位（8 位十六进制）
+//   2. 内部例化 rvp_soc（片上系统，含 PMRU8 I-Cache）
+//   3. 时钟分频：100MHz → 12.5MHz（保证 5 级流水线时序余量）
+//   4. 七段数码管动态扫描，可通过开关切换显示内容：
+//      SW[15:14] = 00: 显示 PC 值（原始调试模式）
+//      SW[15:14] = 01: 显示 I-Cache 命中次数（hit_count）
+//      SW[15:14] = 10: 显示 I-Cache 未命中次数（miss_count）
+//      SW[15:14] = 11: 显示总访问次数（hit_count + miss_count）
 //
 // Nexys4 DDR 引脚分配（与 rvp_nexys4.xdc 一致）：
 //   clk        : E3   (100 MHz 晶体振荡器)
@@ -13,13 +17,14 @@
 //   uart_tx    : D4   (UART_RXD_OUT, FPGA 发送)
 //   led[15:0]  : 16 个用户 LED（高有效）
 //   sw[15:0]   : 16 个拨码开关
-//   btn_center : N17  (中心按钮，高有效)
+//   btn_center : N17  (中心按钮，高有效）
 //   seg_ca~cg  : 七段数码管段（共阳极，active low）
 //   an[7:0]    : 七段数码管位选（active low）
 //
 // 时钟方案：
-//   板载 100MHz → 4 分频 → 25MHz 给 SoC
-//   25MHz 周期 40ns，远大于关键路径 19.951ns，时序余量充足
+//   板载 100MHz → 8 分频 → 12.5MHz 给 SoC
+//   12.5MHz 周期 80ns，关键路径 39.9ns 有充足余量
+//   （25MHz 时 WNS 仅 0.067ns，板载不可靠）
 //   数码管扫描电路仍用 100MHz，避免跨时钟域
 // =============================================================================
 
@@ -41,48 +46,70 @@ module rvp_fpga_top (
 );
 
   // ===========================================================================
-  // 时钟分频：100MHz → 25MHz（4 分频）
-  // 使用 2 位计数器，取最高位作为 SoC 时钟
-  // clk_cnt[1] 的周期 = 4 × 100MHz 周期 = 40ns = 25MHz，占空比 50%
+  // 时钟分频：100MHz → 12.5MHz（8 分频）
   // ===========================================================================
-  logic [1:0] clk_cnt;
-  logic       clk_soc;  // 25MHz SoC 时钟
+  logic [2:0] clk_cnt;
+  logic       clk_soc;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n)
-      clk_cnt <= 2'b0;
+      clk_cnt <= 3'b0;
     else
-      clk_cnt <= clk_cnt + 2'b1;
+      clk_cnt <= clk_cnt + 3'b1;
   end
 
-  assign clk_soc = clk_cnt[1];  // 25MHz, 50% duty cycle
+  assign clk_soc = clk_cnt[2];  // 12.5MHz, 50% duty cycle
 
   // ===========================================================================
   // SoC 实例化
   // ===========================================================================
   logic [31:0] pc_dbg;
+  logic [31:0] icache_hit_count;
+  logic [31:0] icache_miss_count;
+  logic [31:0] snap_hit;
+  logic [31:0] snap_miss;
+  logic [31:0] snap_total;
 
   // btn_center 目前未使用
   (* keep *) logic _unused_btn;
   always_comb _unused_btn = btn_center;
 
   rvp_soc #(
-    .CLK_FREQ (25_000_000)  // 25 MHz
+    .CLK_FREQ (12_500_000)
   ) soc (
-    .clk_i     (clk_soc),
-    .rst_ni    (rst_n),
-    .uart_tx_o (uart_tx),
-    .led_o     (led),
-    .sw_i      (sw),
-    .pc_dbg_o  (pc_dbg)
+    .clk_i          (clk_soc),
+    .rst_ni         (rst_n),
+    .uart_tx_o      (uart_tx),
+    .led_o          (led),
+    .sw_i           (sw),
+    .pc_dbg_o       (pc_dbg),
+    .icache_hit_o   (icache_hit_count),
+    .icache_miss_o  (icache_miss_count),
+    .snap_hit_o     (snap_hit),
+    .snap_miss_o    (snap_miss),
+    .snap_total_o   (snap_total)
   );
 
   // ===========================================================================
   // 七段数码管动态扫描
   // ===========================================================================
-  // 显示 PC 值低 32 位，8 个十六进制数字
-  // 刷新频率：100 MHz / 100,000 = 1 kHz（每位显示约 125 Hz）
-  // 利用视觉暂留实现稳定显示
+  // 显示内容由 SW[15:14] 选择：
+  //   00: PC 值（原始调试模式）
+  //   01: hit_delta（快照寄存器，与串口一致）
+  //   10: miss_delta（快照寄存器，与串口一致）
+  //   11: total_delta（快照寄存器，与串口一致）
+
+  logic [31:0] display_val;
+
+  always_comb begin
+    unique case (sw[15:14])
+      2'b00:   display_val = pc_dbg;       // PC
+      2'b01:   display_val = snap_hit;     // hit_delta
+      2'b10:   display_val = snap_miss;    // miss_delta
+      2'b11:   display_val = snap_total;   // total_delta
+      default: display_val = pc_dbg;
+    endcase
+  end
 
   // 分频计数器：100 MHz → 1 kHz
   logic [16:0] refresh_cnt;
@@ -113,24 +140,23 @@ module rvp_fpga_top (
     end
   end
 
-  // 从 PC 值中选取当前显示的 4 位（1 个十六进制数字）
+  // 从显示值中选取当前显示的 4 位（1 个十六进制数字）
   logic [3:0] hex_digit;
 
   always_comb begin
     unique case (digit_sel)
-      3'd0: hex_digit = pc_dbg[3:0];
-      3'd1: hex_digit = pc_dbg[7:4];
-      3'd2: hex_digit = pc_dbg[11:8];
-      3'd3: hex_digit = pc_dbg[15:12];
-      3'd4: hex_digit = pc_dbg[19:16];
-      3'd5: hex_digit = pc_dbg[23:20];
-      3'd6: hex_digit = pc_dbg[27:24];
-      3'd7: hex_digit = pc_dbg[31:28];
+      3'd0: hex_digit = display_val[3:0];
+      3'd1: hex_digit = display_val[7:4];
+      3'd2: hex_digit = display_val[11:8];
+      3'd3: hex_digit = display_val[15:12];
+      3'd4: hex_digit = display_val[19:16];
+      3'd5: hex_digit = display_val[23:20];
+      3'd6: hex_digit = display_val[27:24];
+      3'd7: hex_digit = display_val[31:28];
     endcase
   end
 
   // 十六进制段码查找表
-  // 编码：{CG,CF,CE,CD,CC,CB,CA}，active low（0=亮）
   logic [6:0] seg;
 
   always_comb begin

@@ -1,134 +1,101 @@
-// =============================================================================
-// rvp_icache.sv - RVP 指令缓存（直接映射 I-Cache）
-// =============================================================================
-// 功能：在 CPU 取指阶段与指令存储器之间增加一级缓存。
-//       采用直接映射结构，命中时从缓存寄存器组合读出（零延迟），
-//       未命中时从后备 BRAM 组合读出并同步填充缓存行。
-//
-// 缓存结构：
-//   - 直接映射（Direct-Mapped）
-//   - 64 个缓存行，每行 1 个字（4 字节），总容量 256 字节
-//   - 地址分解：Tag[31:8] | Index[7:2] | Offset[1:0]=00
-//   - 每行包含：Valid(1bit) + Tag(24bit) + Data(32bit)
-//
-// 工作原理：
-//   1. 取指时，用 PC[7:2] 作为索引读取 Tag 阵列和 Data 阵列（异步读）
-//   2. 比较 Tag：若 Valid=1 且 Tag 匹配 → 命中，返回缓存数据
-//   3. 若未命中 → 从后备 BRAM 读取指令（异步读），返回该指令，
-//      同时在时钟上升沿将指令写入缓存行（同步填充）
-//   4. 复位时所有 Valid 位清零
-//
-// 设计特点：
-//   - 命中和未命中均在同一周期返回数据（后备 BRAM 也是异步读）
-//   - 不改变流水线时序（无需 stall），对流水线透明
-//   - 循环体中的重复取指会命中缓存，减少 BRAM 读端口竞争
-//   - 统计计数器记录命中/未命中次数，可用于命中率分析
-// =============================================================================
-
-module rvp_icache #(
-  parameter int NUM_LINES = 64,           // 缓存行数
-  parameter int INDEX_W   = 6             // 索引位宽（$clog2(64)=6，显式指定避免 Vivado 2018.3 bug）
-) (
-  input  logic        clk_i,
-  input  logic        rst_ni,
-  input  logic [31:0] addr_i,     // PC（字节地址）
-  output logic [31:0] instr_o,    // 指令输出
-  output logic        hit_o,      // 命中信号（统计用）
-  output logic        miss_o,     // 未命中信号（统计用）
-  output logic [31:0] hit_count_o,  // 命中计数
-  output logic [31:0] miss_count_o  // 未命中计数
+// rvp_icache_apgr2.sv - 2-way I-Cache + tournament replacement + prefetch
+module rvp_icache #(parameter NUM_SETS=32, INDEX_W=5) (
+    input logic clk_i,rst_ni, input logic[31:0] addr_i, output logic[31:0] instr_o,
+    output logic hit_o,miss_o, output logic[31:0] hit_count_o,miss_count_o
 );
+    localparam TW=25;
+    logic[4:0] idx; logic[24:0] tag;
+    assign idx=addr_i[INDEX_W+1:2]; assign tag=addr_i[31:INDEX_W+2];
 
-  // -------------------------------------------------------------------------
-  // 地址字段分解
-  // -------------------------------------------------------------------------
-  // Index = addr[7:2]（字地址的低 6 位）
-  // Tag   = addr[31:8]
-  localparam int TAG_W = 24;  // 32 - 6 - 2 = 24 bits
+    logic va[0:31],vb[0:31]; logic[24:0] ta[0:31],tb[0:31]; logic[31:0] da[0:31],db[0:31];
+    logic[2:0] ra[0:31],rb[0:31]; logic la[0:31],lb[0:31],ba[0:31],bb[0:31];
 
-  logic [INDEX_W-1:0] index;
-  logic [TAG_W-1:0]   tag;
+    logic ha,hb; assign ha=va[idx]&&(ta[idx]==tag); assign hb=vb[idx]&&(tb[idx]==tag);
+    logic ch; assign ch=ha||hb; assign hit_o=ch; assign miss_o=!ch;
 
-  assign index = addr_i[INDEX_W+1:2];
-  assign tag   = addr_i[31:INDEX_W+2];
+    logic[31:0] bram_instr;
+    rvp_instr_mem bm(.addr_i(addr_i[12:2]),.instr_o(bram_instr));
 
-  // 消费未使用的字节偏移位，避免 Vivado 综合警告
-  logic _unused_addr_bits;
-  assign _unused_addr_bits = |addr_i[1:0];
-
-  // -------------------------------------------------------------------------
-  // Tag 阵列：Valid + Tag
-  // -------------------------------------------------------------------------
-  logic                  valid_array [0:NUM_LINES-1];
-  logic [TAG_W-1:0]      tag_array   [0:NUM_LINES-1];
-
-  // -------------------------------------------------------------------------
-  // Data 阵列：缓存指令
-  // -------------------------------------------------------------------------
-  logic [31:0]           data_array  [0:NUM_LINES-1];
-
-  // -------------------------------------------------------------------------
-  // 后备存储器（BRAM）
-  // -------------------------------------------------------------------------
-  logic [31:0] backing_instr;
-  logic [10:0] backing_addr;  // 2048-depth word address (11 bits, $clog2(2048)=11)
-
-  // PC 的字地址截取到 BRAM 地址范围（8KB = 2048 字 = 11 位字地址）
-  assign backing_addr = addr_i[12:2];
-
-  rvp_instr_mem backing_mem (
-    .addr_i  (backing_addr),
-    .instr_o (backing_instr)
-  );
-
-  // -------------------------------------------------------------------------
-  // Tag 比较（组合逻辑）
-  // -------------------------------------------------------------------------
-  logic cache_hit;
-  assign cache_hit = valid_array[index] && (tag_array[index] == tag);
-
-  assign hit_o  = cache_hit;
-  assign miss_o = ~cache_hit;
-
-  // -------------------------------------------------------------------------
-  // 指令输出选择
-  //   命中 → 从缓存读
-  //   未命中 → 从后备 BRAM 读（同为异步读，同一周期返回）
-  // -------------------------------------------------------------------------
-  assign instr_o = cache_hit ? data_array[index] : backing_instr;
-
-  // -------------------------------------------------------------------------
-  // 缓存填充（同步写）：未命中时在时钟上升沿更新缓存行
-  // -------------------------------------------------------------------------
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      // 复位：所有 Valid 位清零
-      for (int i = 0; i < NUM_LINES; i++) begin
-        valid_array[i] <= 1'b0;
-        tag_array[i]   <= '0;
-        data_array[i]  <= 32'b0;
-      end
-    end else if (!cache_hit) begin
-      // 未命中：填充缓存行
-      valid_array[index] <= 1'b1;
-      tag_array[index]   <= tag;
-      data_array[index]  <= backing_instr;
+    logic[31:0] lp; logic[1:0] pm; wire[31:0] d=addr_i-lp;
+    always_ff@(posedge clk_i or negedge rst_ni) if(!rst_ni) lp<=-1; else lp<=addr_i;
+    always_comb begin
+        if(d==4) pm=0; else if($signed(d)<0&&$signed(d)>-256) pm=1;
+        else if(d!=4&&$signed(d)>=0) pm=2; else pm=3;
     end
-  end
 
-  // -------------------------------------------------------------------------
-  // 统计计数器
-  // -------------------------------------------------------------------------
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      hit_count_o  <= 32'b0;
-      miss_count_o <= 32'b0;
-    end else begin
-      if (cache_hit)
-        hit_count_o <= hit_count_o + 32'd1;
-      else
-        miss_count_o <= miss_count_o + 32'd1;
+    logic[3:0] sw; logic bp;
+    always_ff@(posedge clk_i or negedge rst_ni) begin
+        if(!rst_ni){sw,bp}<=0; else begin
+            sw<={sw[2:0],!ch};
+            if(sw[0]+sw[1]+sw[2]+sw[3]>=12) bp<=1; else if(sw[0]+sw[1]+sw[2]+sw[3]<=4) bp<=0;
+        end
     end
-  end
 
-endmodule : rvp_icache
+    logic eh[0:31];
+    logic[29:0] pt; logic[31:0] pd; logic pv; logic[1:0] pl;
+    logic ph; assign ph=pv&&(addr_i[31:2]==pt);
+    assign instr_o=ph?pd:(ha?da[idx]:(hb?db[idx]:bram_instr));
+
+    logic kb;
+    always_comb begin
+        if(!va[idx]) kb=0; else if(!vb[idx]) kb=1;
+        else begin
+            if((ra[idx]==0)!=(rb[idx]==0)) kb=(ra[idx]!=0);
+            else if(ba[idx]!=bb[idx]) kb=ba[idx];
+            else if(la[idx]!=lb[idx]) kb=la[idx];
+            else kb=(rb[idx]<ra[idx]);
+        end
+    end
+
+    always_ff@(posedge clk_i or negedge rst_ni) begin
+        if(!rst_ni) for(int i=0;i<32;i++) begin
+            va[i]<=0;vb[i]<=0;ra[i]<=0;rb[i]<=0;la[i]<=0;lb[i]<=0;ba[i]<=0;bb[i]<=0;eh[i]<=0;
+        end else begin
+            if(ha) case(pm) 1:begin ra[idx]<=(ra[idx]>4)?7:ra[idx]+3; la[idx]<=1; end
+                            0:ra[idx]<=(ra[idx]==7)?7:ra[idx]+1;
+                            2:begin ra[idx]<=(ra[idx]>4)?7:ra[idx]+2; ba[idx]<=1; end
+                            3:begin ra[idx]<=3; ba[idx]<=1; end endcase
+            if(hb) case(pm) 1:begin rb[idx]<=(rb[idx]>4)?7:rb[idx]+3; lb[idx]<=1; end
+                            0:rb[idx]<=(rb[idx]==7)?7:rb[idx]+1;
+                            2:begin rb[idx]<=(rb[idx]>4)?7:rb[idx]+2; bb[idx]<=1; end
+                            3:begin rb[idx]<=3; bb[idx]<=1; end endcase
+            if(!ch&&!bp) begin
+                if(kb) begin
+                    eh[idx]<=(rb[idx]>=4); vb[idx]<=1; tb[idx]<=tag; db[idx]<=bram_instr;
+                    case(pm) 1:begin rb[idx]<=5;lb[idx]<=1;bb[idx]<=1; end
+                             2:begin rb[idx]<=3;bb[idx]<=1; end
+                             3:begin rb[idx]<=4;bb[idx]<=1; end default:rb[idx]<=1; endcase
+                end else begin
+                    eh[idx]<=(ra[idx]>=4); va[idx]<=1; ta[idx]<=tag; da[idx]<=bram_instr;
+                    case(pm) 1:begin ra[idx]<=5;la[idx]<=1;ba[idx]<=1; end
+                             2:begin ra[idx]<=3;ba[idx]<=1; end
+                             3:begin ra[idx]<=4;ba[idx]<=1; end default:ra[idx]<=1; endcase
+                end
+            end
+        end
+    end
+
+    logic[7:0] ac; always_ff@(posedge clk_i or negedge rst_ni) if(!rst_ni) ac<=0; else ac<=ac+1;
+    wire do_age=(ac==255);
+    always_ff@(posedge clk_i) if(do_age) for(int i=0;i<32;i++) begin
+        ra[i]<={1'b0,ra[i][2:1]}; rb[i]<={1'b0,rb[i][2:1]}; la[i]<=0; lb[i]<=0;
+    end
+
+    wire[31:0] ij={{11{bram_instr[31]}},bram_instr[31],bram_instr[19:12],bram_instr[20],bram_instr[30:21],1'b0};
+    logic df; logic[31:0] fa;
+    always_comb begin df=1; case(bram_instr[6:0])
+        7'b1101111: fa=addr_i+ij; 7'b1100011: fa=addr_i+4; 7'b1100111: df=0; default: fa=addr_i+4; endcase
+    end
+    always_ff@(posedge clk_i or negedge rst_ni) begin
+        if(!rst_ni){pv,pl}<=0; else begin
+            if(pv&&pl==0) pv<=0;
+            if(!ch&&df) begin pt<=fa[31:2]; pd<=bram_instr; pv<=1; pl<=3; end
+            if(ph){pv,pl}<=0; if(pv&&!ph) pl<=pl-1;
+        end
+    end
+
+    always_ff@(posedge clk_i or negedge rst_ni) begin
+        if(!rst_ni){hit_count_o,miss_count_o}<=0;
+        else if(ch) hit_count_o<=hit_count_o+1; else miss_count_o<=miss_count_o+1;
+    end
+endmodule

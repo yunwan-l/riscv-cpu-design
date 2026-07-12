@@ -17,16 +17,16 @@
 
 ## ---------------------------------------------------------------------------
 ## Clock signal - 100 MHz crystal oscillator on pin E3
-## 板载晶振 100MHz，通过 2 位计数器 4 分频得到 25MHz 给 SoC
+## 板载晶振 100MHz，通过 3 位计数器 8 分频得到 12.5MHz 给 SoC
 ## ---------------------------------------------------------------------------
 set_property -dict { PACKAGE_PIN E3    IOSTANDARD LVCMOS33 } [get_ports { clk }];
 create_clock -add -name sys_clk_pin -period 10.000 -waveform {0 5} [get_ports { clk }];
 
-## 分频时钟约束：clk_soc = clk / 4 = 25MHz (40ns period)
-## clk_cnt[1] 寄存器的 Q 引脚输出即为 25MHz 时钟
-create_generated_clock -name clk_soc -source [get_ports { clk }] -divide_by 4 [get_pins -hier -filter {NAME =~ *clk_cnt_reg[1]/Q}]
+## 分频时钟约束：clk_soc = clk / 8 = 12.5MHz (80ns period)
+## clk_cnt[2] 寄存器的 Q 引脚输出即为 12.5MHz 时钟
+create_generated_clock -name clk_soc -source [get_ports { clk }] -divide_by 8 [get_pins -hier -filter {NAME =~ *clk_cnt_reg[2]/Q}]
 
-## 跨时钟域约束：SoC(25MHz) → 数码管(100MHz)，pc_dbg 是慢变信号，设 false path
+## 跨时钟域约束：SoC(12.5MHz) → 数码管(100MHz)，pc_dbg 是慢变信号，设 false path
 set_false_path -from [get_clocks clk_soc] -to [get_clocks sys_clk_pin]
 set_false_path -from [get_clocks sys_clk_pin] -to [get_clocks clk_soc]
 

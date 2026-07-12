@@ -56,10 +56,10 @@ rtl/core/rvp_instr_mem.sv
 rtl/core/rvp_data_mem.sv
 
 // ============================================================================
-// 3b. I-Cache (Direct-mapped instruction cache)
-//     rvp_core_pipeline instantiates rvp_icache, which wraps rvp_instr_mem
+// 3b. I-Cache (PMRU 8-way instruction cache)
+//     rvp_core_pipeline instantiates rvp_icache_pmru8, which wraps rvp_instr_mem
 // ============================================================================
-rtl/cache/rvp_icache.sv
+rtl/cache/rvp_icache_pmru8.sv
 
 // ============================================================================
 // 4. Core Top (5-stage pipeline CPU, with I-Cache)

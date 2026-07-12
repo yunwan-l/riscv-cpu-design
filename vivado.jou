@@ -2,11 +2,10 @@
 # Vivado v2018.3 (64-bit)
 # SW Build 2405991 on Thu Dec  6 23:38:27 MST 2018
 # IP Build 2404404 on Fri Dec  7 01:43:56 MST 2018
-# Start of session at: Thu Jul  9 18:02:57 2026
-# Process ID: 18596
-# Current directory: D:/大学资料/北邮/课程/阶段式程序设计2
-# Command line: vivado.exe -mode batch -source synth\vivado\run_direct.tcl
-# Log file: D:/大学资料/北邮/课程/阶段式程序设计2/vivado.log
-# Journal file: D:/大学资料/北邮/课程/阶段式程序设计2\vivado.jou
+# Start of session at: Sun Jul 12 20:08:56 2026
+# Process ID: 30460
+# Current directory: D:/cache-riscv-cpu-design
+# Command line: vivado.exe -mode batch -source synth/vivado/run_overflow_fixed.tcl
+# Log file: D:/cache-riscv-cpu-design/vivado.log
+# Journal file: D:/cache-riscv-cpu-design\vivado.jou
 #-----------------------------------------------------------
-source {synth\vivado\run_direct.tcl}
