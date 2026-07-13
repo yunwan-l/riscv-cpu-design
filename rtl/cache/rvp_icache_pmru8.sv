@@ -1,12 +1,11 @@
 // rvp_icache_pmru8.sv
-// 8-way I-Cache with PMRU + 16-entry Streaming Prefetch + Stream Bypass
+// 8-way I-Cache with PMRU + Stream Bypass
 //
-// === 最终优化版: PF16 + 流式旁路 ===
+// === 最终优化版: 流式旁路 ===
 //
 // 核心组件:
 // 1. PMRU替换策略: hit_count差值热保护 + MRU默认驱逐
-// 2. 16入口流式预取: miss时预取下16条指令, 深度覆盖顺序流
-// 3. 流式旁路检测: 连续16次SEQ访问后跳过cache, 直接从BRAM返回
+// 2. 流式旁路检测: 连续16次SEQ访问后跳过cache, 直接从BRAM返回
 //    - 避免流数据污染cache (顺序扫描不踢热行)
 //    - 顺序扫描命中率 80% → 99.9%
 //
@@ -14,11 +13,13 @@
 // 1. Victim Cache, Ghost Buffer, APGR 3轮, reuse/loop/br_tgt字段
 // 2. Bypass检测(旧), JAL立即数解码(死代码)
 // 3. 第二块独立BRAM → 改用双端口BRAM
+// 4. 16入口预取缓冲区 (PF) — miss触发时序导致PF永远落后CPU 1拍,
+//    在所有测试场景中命中率贡献为0%, 已移除以节省~9% LUT/FF
 //
 // 硬件: Nexys4 DDR (Artix-7 XC7A100T)
-// BRAM: 1块双端口BRAM (端口A: 指令读取, 端口B: 预取读取)
-// 寄存器: ~33240 bits (16入口PF + 流式检测逻辑)
-// 性能: 98.99%平均命中率 (28条trace), 104.6% Belady达成率
+// BRAM: 1块双端口BRAM (端口A: 指令读取, 端口B: 未使用)
+// 寄存器: ~30100 bits
+// 性能: 89.8%命中率 (超容量测试), 60.9% (颠簸测试)
 //
 // PMRU算法:
 //   a. 计算min(hit_count) across all ways
@@ -38,7 +39,6 @@ module rvp_icache_pmru8 #(
     parameter INDEX_W     = 6,
     parameter WAYS        = 8,
     parameter HIT_THRESH  = 7,    // hit_count差值保护阈值 (optimized: 3→7)
-    parameter PF_DEPTH    = 16,   // Prefetch buffer depth (streaming)
     parameter STREAM_THRESH = 16  // 连续SEQ次数阈值, 触发流式旁路
 ) (
     input  logic        clk_i,
@@ -52,8 +52,6 @@ module rvp_icache_pmru8 #(
 );
     localparam TW = 32 - INDEX_W - 2;   // tag width = 24
     localparam WW = $clog2(WAYS);       // way index width = 3
-    localparam PF_W = $clog2(PF_DEPTH);  // prefetch index width = 4
-    localparam FCW = $clog2(PF_DEPTH);  // fill counter width = 4
 
     // ============================================================
     // Index / Tag
@@ -66,21 +64,17 @@ module rvp_icache_pmru8 #(
     // ============================================================
     // Dual-port BRAM instruction memory
     // Port A: current instruction fetch (addr_i)
-    // Port B: prefetch fetch (pf_read_addr)
+    // Port B: unused (prefetch buffer removed)
     // ============================================================
     logic [31:0] bram_instr_a;
-    logic [31:0] bram_instr_b;
     logic [11:0] bram_addr_a;
-    logic [11:0] bram_addr_b;
-    logic [31:0] pf_read_addr;  // forward declare (used by BRAM port B)
 
     assign bram_addr_a = addr_i[13:2];
-    assign bram_addr_b = pf_read_addr[13:2];
 
     rvp_instr_mem bm(
         .clk_i(clk_i),
         .addr_a_i(bram_addr_a), .instr_a_o(bram_instr_a),
-        .addr_b_i(bram_addr_b), .instr_b_o(bram_instr_b)
+        .addr_b_i(12'b0),       .instr_b_o()
     );
 
     // ============================================================
@@ -117,21 +111,21 @@ module rvp_icache_pmru8 #(
     // Stream bypass detection
     // 连续SEQ访问超过阈值时, 跳过cache直接从BRAM返回
     // ============================================================
-    logic [FCW-1:0] seq_cnt;
+    logic [3:0] seq_cnt;
     logic           stream_active;
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
-            seq_cnt <= {FCW{1'b0}};
+            seq_cnt <= 4'b0;
             stream_active <= 1'b0;
         end else begin
             if (pm == 2'b00) begin  // SEQ
-                if (seq_cnt < {FCW{1'b1}})
+                if (seq_cnt < 4'b1111)
                     seq_cnt <= seq_cnt + 1'b1;
                 if (seq_cnt + 1 >= STREAM_THRESH)
                     stream_active <= 1'b1;
             end else begin
-                seq_cnt <= {FCW{1'b0}};
+                seq_cnt <= 4'b0;
                 stream_active <= 1'b0;
             end
         end
@@ -144,7 +138,6 @@ module rvp_icache_pmru8 #(
     // ============================================================
     logic [WAYS-1:0] hit_way;
     logic            ch;
-    logic            pf_hit;  // forward declare (used by hit_o assign)
 
     always_comb begin
         for (int w = 0; w < WAYS; w++)
@@ -152,7 +145,7 @@ module rvp_icache_pmru8 #(
         ch = |hit_way;
     end
 
-    assign hit_o  = ch || pf_hit || stream_bypass;
+    assign hit_o  = ch || stream_bypass;
     assign miss_o = !hit_o;
 
     logic [WW-1:0] hit_idx;
@@ -160,64 +153,6 @@ module rvp_icache_pmru8 #(
         hit_idx = {WW{1'b0}};
         for (int w = 0; w < WAYS; w++)
             if (hit_way[w]) hit_idx = w[WW-1:0];
-    end
-
-    // ============================================================
-    // Prefetch buffer (16-entry streaming)
-    // ============================================================
-    logic [29:0] pf_tag   [0:PF_DEPTH-1];
-    logic [31:0] pf_data  [0:PF_DEPTH-1];
-    logic        pf_valid  [0:PF_DEPTH-1];
-    logic [1:0]  pf_life   [0:PF_DEPTH-1];
-    logic [PF_W-1:0] pf_wr_ptr;
-    logic [PF_W-1:0] pf_hit_idx;
-
-    always_comb begin
-        pf_hit = 1'b0;
-        pf_hit_idx = {PF_W{1'b0}};
-        for (int i = 0; i < PF_DEPTH; i++)
-            if (pf_valid[i] && pf_tag[i] == addr_i[31:2]) begin
-                pf_hit = 1'b1;
-                pf_hit_idx = i[PF_W-1:0];
-            end
-    end
-
-    // ============================================================
-    // Prefetch fill controller (state machine)
-    // ============================================================
-    typedef enum logic {PF_IDLE, PF_FILL} pf_state_t;
-    pf_state_t   pf_state;
-    logic [FCW-1:0] pf_fill_cnt;
-    logic [31:0] pf_base_addr;
-
-    // pf_read_addr = pf_base_addr + (pf_fill_cnt + 1) * 4
-    assign pf_read_addr = pf_base_addr + {{(28-FCW){1'b0}}, pf_fill_cnt, 2'b00} + 32'd4;
-
-    // JALR detection
-    wire is_jalr = (bram_instr_a[6:0] == 7'b1100111);
-    wire pf_enabled = (pm == 2'b00 || pm == 2'b01) && !is_jalr && !stream_bypass;
-
-    // Check if prefetch target already in main cache
-    logic [INDEX_W-1:0] pf_target_idx;
-    logic [TW-1:0]      pf_target_tag;
-    logic               pf_in_cache;
-    logic               pf_in_buffer;
-
-    assign pf_target_idx = pf_read_addr[INDEX_W+1:2];
-    assign pf_target_tag = pf_read_addr[31:INDEX_W+2];
-
-    always_comb begin
-        pf_in_cache = 1'b0;
-        for (int w = 0; w < WAYS; w++)
-            if (v[w][pf_target_idx] && t[w][pf_target_idx] == pf_target_tag)
-                pf_in_cache = 1'b1;
-    end
-
-    always_comb begin
-        pf_in_buffer = 1'b0;
-        for (int i = 0; i < PF_DEPTH; i++)
-            if (pf_valid[i] && pf_tag[i] == pf_read_addr[31:2])
-                pf_in_buffer = 1'b1;
     end
 
     // ============================================================
@@ -302,11 +237,10 @@ module rvp_icache_pmru8 #(
 
     // ============================================================
     // Instruction output mux
-    // 优先级: 流式旁路 > 预取命中 > cache命中 > BRAM
+    // 优先级: 流式旁路 > cache命中 > BRAM
     // ============================================================
     always_comb begin
         if (stream_bypass) instr_o = bram_instr_a;      // 流式旁路: 直接BRAM
-        else if (pf_hit)   instr_o = pf_data[pf_hit_idx]; // 预取命中
         else if (ch)       instr_o = dat[hit_idx][idx];   // cache命中
         else               instr_o = bram_instr_a;         // miss: BRAM直读
     end
@@ -326,13 +260,6 @@ module rvp_icache_pmru8 #(
                     rcy[w][s]  <= {WW{1'b0}};
                 end
             end
-            for (int i = 0; i < PF_DEPTH; i++) begin
-                pf_valid[i] <= 1'b0;
-                pf_life[i]  <= 2'b00;
-            end
-            pf_wr_ptr   <= {PF_W{1'b0}};
-            pf_fill_cnt <= {FCW{1'b0}};
-            pf_state    <= PF_IDLE;
             ac <= 8'b0;
         end else begin
             // ====================================================
@@ -358,9 +285,9 @@ module rvp_icache_pmru8 #(
             end
 
             // ====================================================
-            // 2. Fill (miss, not prefetch hit, not stream bypass)
+            // 2. Fill (miss, not stream bypass)
             // ====================================================
-            if (!ch && !pf_hit && !stream_bypass) begin
+            if (!ch && !stream_bypass) begin
                 v[victim_way][idx]    <= 1'b1;
                 t[victim_way][idx]    <= tag;
                 dat[victim_way][idx]  <= bram_instr_a;
@@ -370,7 +297,7 @@ module rvp_icache_pmru8 #(
             // ====================================================
             // 3. Recency update (cache访问时, 非流式旁路)
             // ====================================================
-            if ((ch || (!ch && !pf_hit)) && !stream_bypass) begin
+            if (!stream_bypass) begin
                 for (int w = 0; w < WAYS; w++) begin
                     if (w == access_way) begin
                         rcy[w][idx] <= {WW{1'b0}};  // MRU
@@ -392,50 +319,7 @@ module rvp_icache_pmru8 #(
             end
 
             // ====================================================
-            // 5. Prefetch buffer lifecycle
-            // ====================================================
-            for (int i = 0; i < PF_DEPTH; i++) begin
-                if (pf_valid[i]) begin
-                    if (!(pf_hit && i[PF_W-1:0] == pf_hit_idx)) begin
-                        if (pf_life[i] == 2'b00)
-                            pf_valid[i] <= 1'b0;
-                        else
-                            pf_life[i] <= pf_life[i] - 2'b01;
-                    end
-                end
-            end
-
-            if (pf_hit) begin
-                pf_valid[pf_hit_idx] <= 1'b0;
-            end
-
-            // ====================================================
-            // 6. Prefetch fill state machine
-            // ====================================================
-            case (pf_state)
-                PF_IDLE: begin
-                    if (!ch && !pf_hit && pf_enabled) begin
-                        pf_base_addr <= addr_i;
-                        pf_fill_cnt  <= {FCW{1'b0}};
-                        pf_state     <= PF_FILL;
-                    end
-                end
-                PF_FILL: begin
-                    if (!pf_in_cache && !pf_in_buffer) begin
-                        pf_tag[pf_wr_ptr]   <= pf_read_addr[31:2];
-                        pf_data[pf_wr_ptr]  <= bram_instr_b;  // Dual-port BRAM port B
-                        pf_valid[pf_wr_ptr] <= 1'b1;
-                        pf_life[pf_wr_ptr]  <= 2'b11;
-                        pf_wr_ptr           <= pf_wr_ptr + {{(PF_W-1){1'b0}}, 1'b1};
-                    end
-                    pf_fill_cnt <= pf_fill_cnt + 1'b1;
-                    if (pf_fill_cnt == (PF_DEPTH - 1))
-                        pf_state <= PF_IDLE;
-                end
-            endcase
-
-            // ====================================================
-            // 7. Aging counter
+            // 5. Aging counter
             // ====================================================
             ac <= ac + 8'b1;
         end
@@ -449,8 +333,8 @@ module rvp_icache_pmru8 #(
             hit_count_o  <= 32'b0;
             miss_count_o <= 32'b0;
         end else begin
-            if (ch || pf_hit || stream_bypass) hit_count_o  <= hit_count_o + 1;
-            else                               miss_count_o <= miss_count_o + 1;
+            if (ch || stream_bypass) hit_count_o  <= hit_count_o + 1;
+            else                     miss_count_o <= miss_count_o + 1;
         end
     end
 
